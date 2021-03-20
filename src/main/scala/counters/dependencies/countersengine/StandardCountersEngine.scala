@@ -20,59 +20,192 @@ import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.util.Timeout
 import akka.actor.typed.scaladsl.AskPattern._
 import counters.ServiceConfig
-import counters.model.{Counter, CounterCreateInputs, CounterState, CountersGroup, CountersGroupCreateInputs, OperationOrigin}
+import counters.model.{Counter, CounterCreateInputs, CounterState, CountersGroup, CountersGroupCreateInputs, OperationOrigin, ServiceStats}
+import counters.tools.JsonImplicits
+import org.apache.commons.io.FileUtils
+import org.json4s.{Extraction, JValue}
+import org.json4s.jackson.JsonMethods.parse
+import org.json4s.jackson.Serialization.write
 import org.slf4j.LoggerFactory
 
+import java.io.{File, FileFilter}
 import java.time.Instant
 import java.util.UUID
 import scala.concurrent.Future
 import scala.concurrent.duration._
+import scala.util.Try
 
 
 trait CountersStorage {
-  def groupsList(): Iterator[CountersGroup]
+  def groupsList(): Iterable[CountersGroup]
 
-  def groupsCounters(groupId: UUID): Iterator[Counter]
+  def groupCounters(groupId: UUID): Iterable[Counter]
 
   def groupGet(groupId: UUID): Option[CountersGroup]
 
   def counterGet(groupId: UUID, counterId: UUID): Option[Counter]
+
+  def stateGet(groupId: UUID, counterId: UUID): Option[CounterState]
+
+  def groupSave(group: CountersGroup): Boolean
+
+  def counterSave(counter: Counter): Boolean
+
+  def stateSave(state: CounterState): Boolean
 }
 
 class NopCounterStorage(config: ServiceConfig) extends CountersStorage {
-  override def groupsList(): Iterator[CountersGroup] = Iterator.empty
+  override def groupsList(): Iterable[CountersGroup] = Iterable.empty
 
-  override def groupsCounters(groupId: UUID): Iterator[Counter] = Iterator.empty
+  override def groupCounters(groupId: UUID): Iterable[Counter] = Iterable.empty
 
   override def groupGet(groupId: UUID): Option[CountersGroup] = None
 
   override def counterGet(groupId: UUID, counterId: UUID): Option[Counter] = None
+
+  override def stateGet(groupId: UUID, counterId: UUID): Option[CounterState] = None
+
+  override def groupSave(group: CountersGroup): Boolean = true
+
+  override def counterSave(counter: Counter): Boolean = true
+
+  override def stateSave(state: CounterState): Boolean = true
 }
 
 
-class BasicCountersFileSystemStorage(config: ServiceConfig) extends CountersStorage {
-  override def groupsList(): Iterator[CountersGroup] = {
-    ???
+class BasicCountersFileSystemStorage(config: ServiceConfig) extends CountersStorage with JsonImplicits {
+  private val logger = LoggerFactory.getLogger(getClass)
+  private val storeConfig = config.counters.behavior.fileSystemStorage
+  private val storeBaseDirectory = {
+    val path = new File(storeConfig.path)
+    if (!path.exists()) {
+      logger.info(s"Creating base directory $path")
+      if (path.mkdirs()) logger.info(s"base directory $path created")
+      else {
+        val message = s"Unable to create base directory $path"
+        logger.error(message)
+        throw new RuntimeException(message)
+      }
+    }
+    logger.info(s"Using $path to store counters data")
+    path
   }
 
-  override def groupsCounters(groupId: UUID): Iterator[Counter] = {
-    ???
+  private val directoryUUIDNamedFilter = new FileFilter {
+    override def accept(file: File): Boolean = {
+      file.isDirectory && Try(UUID.fromString(file.getName)).toOption.isDefined
+    }
+  }
+
+  def groupsDirectories(): Option[Array[File]] = {
+    Option(storeBaseDirectory.listFiles(directoryUUIDNamedFilter))
+  }
+
+  def groupsUUIDs(): Iterable[UUID] = {
+    groupsDirectories()
+      .getOrElse(Array.empty)
+      .map(_.getName)
+      .flatMap(name => Try(UUID.fromString(name)).toOption)
+  }
+
+  def groupDirectory(groupId: UUID): File = {
+    new File(storeBaseDirectory, groupId.toString)
+  }
+
+  def countersDirectories(groupId: UUID): Option[Array[File]] = {
+    Option(groupDirectory(groupId).listFiles(directoryUUIDNamedFilter))
+  }
+
+  def counterDirectory(groupId: UUID, counterId: UUID): File = {
+    new File(groupDirectory(groupId), counterId.toString)
+  }
+
+  def countersUUIDs(groupId: UUID): Iterable[UUID] = {
+    countersDirectories(groupId)
+      .getOrElse(Array.empty)
+      .map(_.getName)
+      .flatMap(name => Try(UUID.fromString(name)).toOption)
+  }
+
+
+  def jsonRead(file: File): JValue = {
+    parse(FileUtils.readFileToString(file, "UTF-8"))
+  }
+
+  def jsonWrite(file: File, value: JValue) = {
+    val tmpFile = new File(file.getParent, file.getName + ".tmp")
+    FileUtils.write(tmpFile, write(value), "UTF-8")
+    file.delete()
+    tmpFile.renameTo(file)
+  }
+
+  def groupFile(groupId: UUID): File = {
+    new File(groupDirectory(groupId), "group.json")
+  }
+
+  def counterFile(groupId: UUID, counterId: UUID): File = {
+    new File(counterDirectory(groupId, counterId), "counter.json")
+  }
+
+  def stateFile(groupId: UUID, counterId: UUID): File = {
+    new File(counterDirectory(groupId, counterId), "state.json")
+  }
+
+  def historyFile(groupId: UUID, counterId: UUID): File = {
+    new File(counterDirectory(groupId, counterId), "history.json")
+  }
+
+
+  override def groupsList(): Iterable[CountersGroup] = {
+    groupsUUIDs()
+      .map(groupFile)
+      .map(jsonRead)
+      .flatMap(_.extractOpt[CountersGroup])
+  }
+
+  override def groupCounters(groupId: UUID): Iterable[Counter] = {
+    countersUUIDs(groupId)
+      .map(counterId => counterFile(groupId, counterId))
+      .map(jsonRead)
+      .flatMap(_.extractOpt[Counter])
   }
 
   override def groupGet(groupId: UUID): Option[CountersGroup] = {
-    ???
+    jsonRead(groupFile(groupId)).extractOpt[CountersGroup]
   }
 
   override def counterGet(groupId: UUID, counterId: UUID): Option[Counter] = {
-    ???
+    jsonRead(counterFile(groupId, counterId)).extractOpt[Counter]
+  }
+
+  override def stateGet(groupId: UUID, counterId: UUID): Option[CounterState] = {
+    jsonRead(stateFile(groupId, counterId)).extractOpt[CounterState]
+  }
+
+  override def groupSave(group: CountersGroup): Boolean = {
+    val dest = groupFile(group.id)
+    if (!dest.getParentFile.exists()) dest.getParentFile.mkdirs()
+    jsonWrite(dest, Extraction.decompose(group))
+  }
+
+  override def counterSave(counter: Counter): Boolean = {
+    val dest = counterFile(counter.groupId, counter.id)
+    if (!dest.getParentFile.exists()) dest.getParentFile.mkdirs()
+    jsonWrite(dest, Extraction.decompose(counter))
+  }
+
+  override def stateSave(state: CounterState): Boolean = {
+    val dest = stateFile(state.counter.groupId, state.counter.id)
+    if (!dest.getParentFile.exists()) dest.getParentFile.mkdirs()
+    jsonWrite(dest, Extraction.decompose(state))
   }
 }
 
 
 object StandardCountersEngine {
   def apply(config: ServiceConfig): StandardCountersEngine = {
-    //val storage = new BasicCountersFileSystemStorage(config)
-    val storage = new NopCounterStorage(config)
+    val storage = new BasicCountersFileSystemStorage(config)
+    //val storage = new NopCounterStorage(config)
     new StandardCountersEngine(config, storage)
   }
 }
@@ -105,6 +238,7 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
         val newLastUpdated = Instant.now()
         val newLastOrigin = operationOrigin
         val newState = CounterState(newStateId, currentState.counter, newCount, newLastUpdated, newLastOrigin)
+        storage.stateSave(newState)
         replyTo ! Some(newState)
         groupActor ! GroupCounterUpdatedStateCommand(newState)
         counterBehavior(groupActor, newState)
@@ -121,6 +255,8 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
   // =================================================================================
   sealed trait GroupCommand
 
+  object GroupRestoreCommand extends GroupCommand
+
   case class GroupCounterIncrementCommand(
     counterId: UUID,
     operationOrigin: Option[OperationOrigin],
@@ -132,21 +268,35 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
 
   case class GroupCounterStateGetCommand(
     counterId: UUID,
-    replyTo:ActorRef[Option[CounterState]]
+    replyTo: ActorRef[Option[CounterState]]
   ) extends GroupCommand
 
   case class GroupCounterGetCommand(
     counterId: UUID,
-    replyTo:ActorRef[Option[Counter]]
+    replyTo: ActorRef[Option[Counter]]
   ) extends GroupCommand
 
   case class GroupCounterCreateCommand(
     inputs: CounterCreateInputs,
-    replyTo:ActorRef[Option[Counter]]
+    replyTo: ActorRef[Option[Counter]]
   ) extends GroupCommand
 
-  def groupBehavior(group: CountersGroup, counters: Map[UUID, ActorRef[CounterCommand]], states: Map[UUID, CounterState]): Behavior[GroupCommand] = Behaviors.setup { context =>
+  def groupBehavior(counterKeeperRef: ActorRef[GuardianCounterAdded], group: CountersGroup, counters: Map[UUID, ActorRef[CounterCommand]], states: Map[UUID, CounterState]): Behavior[GroupCommand] = Behaviors.setup { context =>
     Behaviors.receiveMessage {
+      // ---------------------------------------------------------------------
+      case GroupRestoreCommand =>
+        val storedCounters = storage.groupCounters(group.id)
+        val restoredStates = storedCounters.map{counter =>
+          counter.id -> storage.stateGet(counter.groupId, counter.id).get  // TODO dangerous .get !!
+        }.toMap
+        val restoredCounters = storedCounters.map{counter =>
+          val counterActorName = s"group-${counter.groupId}-counter-${counter.id}"
+          val counterState = restoredStates.get(counter.id).get // TODO dangerous .get !!
+          val counterRef = context.spawn(counterBehavior(context.self, counterState), counterActorName)
+          counter.id -> counterRef
+        }.toMap
+        counterKeeperRef ! GuardianCounterAdded(storedCounters.size)
+        groupBehavior(counterKeeperRef, group, counters ++ restoredCounters, states ++ restoredStates)
       // ---------------------------------------------------------------------
       case GroupCounterCreateCommand(inputs, replyTo) =>
         val groupId = group.id
@@ -170,12 +320,15 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
         val counterRef = context.spawn(counterBehavior(context.self, initialState), counterActorName)
         val newCounters = counters + (counterId -> counterRef)
         val newStates = states + (counterId -> initialState)
+        storage.counterSave(counter)
+        storage.stateSave(initialState)
         replyTo ! Some(counter)
-        groupBehavior(group, newCounters, newStates)
+        counterKeeperRef ! GuardianCounterAdded(1)
+        groupBehavior(counterKeeperRef, group, newCounters, newStates)
       // ---------------------------------------------------------------------
       case GroupCounterUpdatedStateCommand(updatedState) =>
         val updatedStates = states + (updatedState.counter.id -> updatedState)
-        groupBehavior(group, counters, updatedStates)
+        groupBehavior(counterKeeperRef, group, counters, updatedStates)
       // ---------------------------------------------------------------------
       case GroupCounterIncrementCommand(counterId, operationOrigin, replyTo) =>
         counters.get(counterId) match {
@@ -207,6 +360,8 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
   object GuardianStopCommand extends GuardianCommand
 
   object GuardianSetupCommand extends GuardianCommand
+
+  case class GuardianCounterAdded(counterAddedCount: Int) extends GuardianCommand
 
   case class GuardianGroupCreateCommand(
     inputs: CountersGroupCreateInputs,
@@ -241,8 +396,10 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
     counterId: UUID,
     value: ActorRef[Option[CounterState]]) extends GuardianCommand
 
+  case class GuardianServiceStats(
+    replyTo: ActorRef[ServiceStats]) extends GuardianCommand
 
-  def guardianRunningBehavior(groups: Map[UUID, ActorRef[GroupCommand]]): Behavior[GuardianCommand] = Behaviors.setup { context =>
+  def guardianRunningBehavior(counterCount: Int, groups: Map[UUID, ActorRef[GroupCommand]]): Behavior[GuardianCommand] = Behaviors.setup { context =>
     Behaviors.receiveMessage {
       // ---------------------------------------------------------------------
       case GuardianSetupCommand => // Ignore already done
@@ -251,14 +408,18 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
       case GuardianStopCommand =>
         Behaviors.stopped
       // ---------------------------------------------------------------------
+      case GuardianCounterAdded(counterAddedCount) =>
+        guardianRunningBehavior(counterCount + counterAddedCount, groups)
+      // ---------------------------------------------------------------------
       case GuardianGroupCreateCommand(inputs, replyTo) =>
         val groupId = UUID.randomUUID()
-        val group = CountersGroup(id=groupId, name=inputs.name, description = inputs.description, origin = inputs.origin)
+        val group = CountersGroup(id = groupId, name = inputs.name, description = inputs.description, origin = inputs.origin)
         val groupActorName = s"group-$groupId"
-        val groupRef = context.spawn(groupBehavior(group, Map.empty, Map.empty), groupActorName)
+        val groupRef = context.spawn(groupBehavior(context.self, group, Map.empty, Map.empty), groupActorName)
         val updatedGroups = groups + (groupId -> groupRef)
         replyTo ! group
-        guardianRunningBehavior(updatedGroups)
+        storage.groupSave(group)
+        guardianRunningBehavior(counterCount, updatedGroups)
       // ---------------------------------------------------------------------
       case GuardianGroupCountersCommand(groupId, replyTo) =>
         Behaviors.same
@@ -293,6 +454,10 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
           case Some(groupRef) => groupRef ! GroupCounterStateGetCommand(counterId, replyTo)
         }
         Behaviors.same
+      // ---------------------------------------------------------------------
+      case GuardianServiceStats(replyTo) =>
+        replyTo ! ServiceStats(groups.size, counterCount)
+        Behaviors.same
     }
   }
 
@@ -302,8 +467,15 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
         case GuardianStopCommand =>
           Behaviors.stopped
         case GuardianSetupCommand =>
-          val groups = Map.empty[UUID, ActorRef[GroupCommand]]
-          guardianRunningBehavior(groups)
+          val storedGroups = storage.groupsList()
+          val groups: Map[UUID, ActorRef[GroupCommand]] =
+            storedGroups.map { group =>
+              val groupActorName = s"group-${group.id}"
+              val groupActorRef = context.spawn(groupBehavior(context.self, group, Map.empty, Map.empty), groupActorName)
+              groupActorRef ! GroupRestoreCommand
+              group.id -> groupActorRef
+            }.toMap
+          guardianRunningBehavior(0, groups)
         case x => // Any other messages are ignored until the setup is received
           logger.warn(s"Can't process any standard messages until setup is done, received $x")
           Behaviors.same
@@ -333,7 +505,7 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
     countersSystem.ask(GuardianGroupStatesCommand(groupId, _))
   }
 
-  override def counterCreate(groupId:UUID, inputs: CounterCreateInputs): Future[Option[Counter]] = {
+  override def counterCreate(groupId: UUID, inputs: CounterCreateInputs): Future[Option[Counter]] = {
     countersSystem.ask(GuardianCounterCreateCommand(groupId, inputs, _))
   }
 
@@ -352,5 +524,9 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
   override def shutdown(): Future[Boolean] = {
     countersSystem ! GuardianStopCommand
     countersSystem.whenTerminated.map(_ => true)
+  }
+
+  override def serviceStatsGet(): Future[ServiceStats] = {
+    countersSystem.ask(GuardianServiceStats(_))
   }
 }

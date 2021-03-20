@@ -6,13 +6,14 @@ import akka.http.scaladsl.model.MediaTypes.`text/html`
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import counters.ServiceDependencies
-import counters.model.OperationOrigin
+import counters.model.{OperationOrigin, ServiceStats}
 import counters.tools.Templating
 import yamusca.imports._
 import yamusca.implicits._
 
 case class HomeContext(
-  context: PageContext
+  context: PageContext,
+  stats: ServiceStats
 )
 
 case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
@@ -22,6 +23,7 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
   val pageContext = PageContext(dependencies.config.counters)
 
   implicit val ec = scala.concurrent.ExecutionContext.global
+  implicit val serviceStatsConverter = ValueConverter.deriveConverter[ServiceStats]
   implicit val pageContextConverter = ValueConverter.deriveConverter[PageContext]
   implicit val homeContextConverter = ValueConverter.deriveConverter[HomeContext]
 
@@ -54,13 +56,16 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
 
   def home: Route = pathEndOrSingleSlash {
     get {
-      complete {
-        val homeContext = HomeContext(
-          context = pageContext
-        )
-        val content = homeLayout(homeContext.asContext)
-        val contentType = `text/html` withCharset `UTF-8`
-        HttpResponse(entity = HttpEntity(contentType, content), headers = noClientCacheHeaders)
+      onSuccess(dependencies.engine.serviceStatsGet()) { stats =>
+        complete {
+          val homeContext = HomeContext(
+            context = pageContext,
+            stats = stats
+          )
+          val content = homeLayout(homeContext.asContext)
+          val contentType = `text/html` withCharset `UTF-8`
+          HttpResponse(entity = HttpEntity(contentType, content), headers = noClientCacheHeaders)
+        }
       }
     }
   }

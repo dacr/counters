@@ -37,7 +37,13 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
   implicit val ec = scala.concurrent.ExecutionContext.global
 
   override def routes: Route = pathPrefix("api") {
-    concat(info, increment)
+    concat(
+      info,
+      groupCreate,
+      counterCreate,
+      counterState,
+      increment
+    )
   }
 
   def info: Route = {
@@ -55,7 +61,7 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
     }
   }
 
-  def groupCreate:Route = {
+  def groupCreate: Route = {
     path("group") {
       post {
         entity(as[CountersGroupCreateInputs]) { inputs =>
@@ -73,7 +79,7 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
     }
   }
 
-  def counterCreate:Route = {
+  def counterCreate: Route = {
     path("group" / JavaUUID / "counter") { groupId =>
       post {
         entity(as[CounterCreateInputs]) { inputs =>
@@ -91,8 +97,8 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
     }
   }
 
-  def counterState:Route = {
-    path("group" / JavaUUID / "counter" / JavaUUID) { (groupId,counterId) =>
+  def counterState: Route = {
+    path("group" / JavaUUID / "counter" / JavaUUID) { (groupId, counterId) =>
       get {
         onSuccess(dependencies.engine.stateGet(groupId, counterId)) {
           case Some(state) => complete(state)
@@ -102,12 +108,12 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
     }
   }
 
-  def increment:Route = {
+  def increment: Route = {
     path("increment" / JavaUUID / JavaUUID) { (groupId, counterId) =>
       get {
         optionalHeaderValueByName("User-Agent") { agent =>
           extractClientIP { ip =>
-            val origin = OperationOrigin(ip.toOption.map(_.getHostAddress),agent)
+            val origin = OperationOrigin(ip.toOption.map(_.getHostAddress), agent)
             onSuccess(dependencies.engine.counterIncrement(groupId, counterId, Some(origin))) {
               case Some(state) => complete(state)
               case None => complete(StatusCodes.NotFound -> "group or counter not found")
