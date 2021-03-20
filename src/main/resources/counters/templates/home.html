@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link href="{{context.base}}/assets/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="icon" type="image/png" href="{{context.base}}/images/logo-base-32.png">
+    <title>{{context.title}}</title>
+</head>
+<body>
+<p/>
+<div class="container">
+    <div class="jumbotron">
+
+        <h1><img src="{{context.base}}/images/logo-base-64.png"/> <a href="{{context.base}}">{{context.title}}</a></h1>
+
+        <p class="text-justify">
+            A <b>{{context.appcode}}</b> service with API to count anything with just a simple get request sent
+            to your defined counters. Create QR Code with the counter link, and count how many people flash and
+            visit.
+        </p>
+
+        <hr/>
+
+        <p>
+            Take a look to the <a href="{{context.swaggerUIURL}}">Swagger API specification</a> to use this service
+            or go to <a href="{{context.projectURL}}">the {{context.appcode}} github repository</a> if you want
+            to contribute.
+        </p>
+        <p align="right"><small>
+            <i>
+                <a href="{{context.projectURL}}">{{context.appcode}}</a> {{context.buildVersion}}
+            </i>
+        </small>
+        </p>
+
+    </div>
+</div>
+
+<script src="{{context.base}}/assets/jquery/jquery.min.js"></script>
+<script src="{{context.base}}/assets/popper.js/umd/popper.min.js"></script>
+<script src="{{context.base}}/assets/bootstrap/js/bootstrap.min.js"></script>
+
+</body>
+</html>
