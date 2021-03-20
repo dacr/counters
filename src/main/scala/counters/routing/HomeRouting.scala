@@ -38,8 +38,9 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
             val origin = OperationOrigin(ip.toOption.map(_.getHostAddress),agent)
             onSuccess(dependencies.engine.counterIncrement(groupId, counterId, Some(origin))) {
               case Some(state) if state.counter.redirect.isDefined =>
-                // TODO add groupId, counterId, count as request parameters to the redirect
-                redirect(state.counter.redirect.get.toString, StatusCodes.TemporaryRedirect)
+                val url = state.counter.redirect.get.toString
+                val query=s"?count=${state.count}&groupId=$groupId&counterId=$counterId&stateId=${state.id}"
+                redirect(s"$url?$query", StatusCodes.TemporaryRedirect)
               case Some(state) => // no redirect configured, so going back to homepage
                 redirect(site.baseURL, StatusCodes.TemporaryRedirect)
               case None =>

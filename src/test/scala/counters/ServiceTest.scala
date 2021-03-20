@@ -15,15 +15,20 @@
  */
 package counters
 
+import akka.http.scaladsl.model.headers.`Content-Location`
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import counters.dependencies.countersengine.{NopCounterStorage, StandardCountersEngine}
+import counters.model.{CounterCreateInputs, CountersGroupCreateInputs}
 import counters.routing.Health
 import counters.tools.JsonImplicits
 import org.scalatest.matchers._
 import org.scalatest.wordspec._
+import org.scalatest.OptionValues._
+
+import java.net.URL
 
 
-class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTest with JsonImplicits {
+class ServiceTest extends AsyncWordSpec with should.Matchers with ScalatestRouteTest with JsonImplicits {
 
   val config = ServiceConfig()
   val storage = new NopCounterStorage(config)
@@ -31,7 +36,7 @@ class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTe
   val dependencies = new ServiceDependencies(config, engine)
   val routes = ServiceRoutes(dependencies).routes
 
-  "Web Echo Service" should {
+  "Counters Service" should {
     "Respond OK when pinged" in {
       Get("/health") ~> routes ~> check {
         import de.heikoseeberger.akkahttpjson4s.Json4sSupport._
@@ -56,6 +61,37 @@ class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTe
       Get() ~> routes ~> check {
         responseAs[String] should include regex "Counters"
       }
+    }
+    "Increment a counter" in {
+      val redirectTo = "http://mapland.fr/counters/dummy"
+      val groupInputs = CountersGroupCreateInputs("truc",None,None)
+      val counterInputs = CounterCreateInputs("counter", None, Some(new URL(redirectTo)), None)
+      engine
+        .groupCreate(groupInputs)
+        .flatMap(group => engine.counterCreate(group.id, counterInputs) )
+        .map{counter =>
+          val counterId = counter.value.id
+          val groupId = counter.value.groupId
+          Get(s"/$groupId/count/$counterId") ~> routes ~> check {
+            response.status.intValue() shouldBe 307
+            val location = header("Location").value.value()
+            val locationURL = new URL(location)
+            val params =
+              locationURL
+                .getQuery
+                .replaceAll("^[?]", "")
+                .split("&")
+                .map(_.split("=",2))
+                .map(_ match {case Array(a,b)=> a->b case Array(a) => a->""})
+                .toMap
+            location should startWith regex s"^$redirectTo"
+            println(params)
+            params.get("count").value shouldBe "1"
+            params.get("groupId").value shouldBe groupId.toString
+            params.get("counterId").value shouldBe counterId.toString
+          }
+        }
+
     }
   }
 }

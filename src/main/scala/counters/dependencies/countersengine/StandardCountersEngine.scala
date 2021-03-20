@@ -100,10 +100,11 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
     Behaviors.receiveMessage {
       // ---------------------------------------------------------------------
       case CounterIncrementCommand(operationOrigin, replyTo) =>
+        val newStateId = UUID.randomUUID()
         val newCount = currentState.count + 1
         val newLastUpdated = Instant.now()
         val newLastOrigin = operationOrigin
-        val newState = CounterState(currentState.counter, newCount, newLastUpdated, newLastOrigin)
+        val newState = CounterState(newStateId, currentState.counter, newCount, newLastUpdated, newLastOrigin)
         replyTo ! Some(newState)
         groupActor ! GroupCounterUpdatedStateCommand(newState)
         counterBehavior(groupActor, newState)
@@ -159,6 +160,7 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
           redirect = inputs.redirect
         )
         val initialState = CounterState(
+          id = UUID.randomUUID(),
           counter = counter,
           count = 0L,
           lastOrigin = inputs.origin,
