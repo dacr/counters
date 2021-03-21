@@ -69,7 +69,9 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
 
   // Quick & dirty hack to avoid any kind of html/javascript injection
   def secureString(input:String):String = {
-    input.replaceAll("""[^-0-9a-zA-Z_'.,;!:]""", "")
+    input
+      .replaceAll("""[^-0-9a-zA-Z_'.,;!:# ]""", "")
+      .replaceAll("""\s{2,}""", " ")
   }
 
   def state: Route = {
