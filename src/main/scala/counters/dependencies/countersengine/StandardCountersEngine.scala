@@ -229,7 +229,7 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
     replyTo: ActorRef[Option[CounterState]]
   ) extends CounterCommand
 
-  def counterBehavior(groupActor: ActorRef[GroupCommand], currentState: CounterState): Behavior[CounterCommand] =
+  def counterBehavior(group:CountersGroup, groupActor: ActorRef[GroupCommand], currentState: CounterState): Behavior[CounterCommand] =
     Behaviors.receiveMessage {
       // ---------------------------------------------------------------------
       case CounterIncrementCommand(operationOrigin, replyTo) =>
@@ -237,11 +237,11 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
         val newCount = currentState.count + 1
         val newLastUpdated = Instant.now()
         val newLastOrigin = operationOrigin
-        val newState = CounterState(newStateId, currentState.counter, newCount, newLastUpdated, newLastOrigin)
+        val newState = CounterState(newStateId, group, currentState.counter, newCount, newLastUpdated, newLastOrigin)
         storage.stateSave(newState)
         replyTo ! Some(newState)
         groupActor ! GroupCounterUpdatedStateCommand(newState)
-        counterBehavior(groupActor, newState)
+        counterBehavior(group, groupActor, newState)
       // ---------------------------------------------------------------------
       case CounterStateCommand(replyTo) =>
         replyTo ! Some(currentState)
@@ -292,7 +292,7 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
         val restoredCounters = storedCounters.map{counter =>
           val counterActorName = s"group-${counter.groupId}-counter-${counter.id}"
           val counterState = restoredStates.get(counter.id).get // TODO dangerous .get !!
-          val counterRef = context.spawn(counterBehavior(context.self, counterState), counterActorName)
+          val counterRef = context.spawn(counterBehavior(group, context.self, counterState), counterActorName)
           counter.id -> counterRef
         }.toMap
         counterKeeperRef ! GuardianCounterAdded(storedCounters.size)
@@ -311,13 +311,14 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
         )
         val initialState = CounterState(
           id = UUID.randomUUID(),
+          group = group,
           counter = counter,
           count = 0L,
           lastOrigin = inputs.origin,
           lastUpdated = Instant.now
         )
         val counterActorName = s"group-$groupId-counter-$counterId"
-        val counterRef = context.spawn(counterBehavior(context.self, initialState), counterActorName)
+        val counterRef = context.spawn(counterBehavior(group, context.self, initialState), counterActorName)
         val newCounters = counters + (counterId -> counterRef)
         val newStates = states + (counterId -> initialState)
         storage.counterSave(counter)

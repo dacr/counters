@@ -23,6 +23,7 @@ lazy val versions = new {
   val swaggerui        = "3.44.0"
   val bootstrap        = "4.6.0"
   val jquery           = "3.5.1"
+  val awesome          = "5.15.2"
 
   // server side dependencies
   val pureConfig       = "0.14.1"
@@ -40,9 +41,10 @@ lazy val versions = new {
 
 // client side dependencies
 libraryDependencies ++= Seq(
-  "org.webjars" % "swagger-ui" % versions.swaggerui,
-  "org.webjars" % "bootstrap" % versions.bootstrap,
-  "org.webjars" % "jquery"    % versions.jquery,
+  "org.webjars" % "swagger-ui"   % versions.swaggerui,
+  "org.webjars" % "bootstrap"    % versions.bootstrap,
+  "org.webjars" % "jquery"       % versions.jquery,
+  "org.webjars" % "font-awesome" % versions.awesome
 )
 
 // server side dependencies

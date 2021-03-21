@@ -51,9 +51,12 @@ class ServiceTest extends AsyncWordSpec with should.Matchers with ScalatestRoute
         responseAs[String] should include regex "WARRANTY"
       }
     }
-    "Be able to return an embedded webjar asset" in {
-      Get("/assets/jquery/jquery.js") ~> routes ~> check {
-        responseAs[String] should include regex "jQuery JavaScript Library"
+    "Be able to return embedded webjar assets" in {
+      Get("/assets/jquery/jquery.min.js") ~> routes ~> check {
+        responseAs[String] should include regex "jQuery v"
+      }
+      Get("/assets/font-awesome/css/fontawesome.min.css") ~> routes ~> check {
+        responseAs[String] should include regex "Font Awesome Free"
       }
     }
     "Respond a counters related home page content" in {
