@@ -1,4 +1,4 @@
-# ![](images/logo-base-64.png) Counters
+# ![](images/logo-base-64.png) Counters [![][CountersImg]][CountersLnk]
 Just count whatever you want. Two steps to create a counter :
 1. Create a counters group
 2. Create your counter
@@ -55,5 +55,5 @@ cs launch fr.janalyse::counters:0.1.0
 [akka-http]:  https://doc.akka.io/docs/akka-http/current/index.html
 
 [Counters]:       https://github.com/dacr/counters
-[CountersMvnImg]: https://img.shields.io/maven-central/v/fr.janalyse/counters_2.13.svg
-[CountersMvnLnk]: https://search.maven.org/#search%7Cga%7C1%7Cfr.janalyse.counters
+[CountersImg]: https://img.shields.io/maven-central/v/fr.janalyse/counters_2.13.svg
+[CountersLnk]: https://search.maven.org/#search%7Cga%7C1%7Cfr.janalyse.counters
