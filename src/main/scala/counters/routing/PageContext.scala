@@ -29,6 +29,7 @@ case class PageContext(
   projectURL: String,
   buildVersion: String,
   buildDateTime: String,
+  contactEmail: String
 )
 
 object PageContext {
@@ -43,10 +44,10 @@ object PageContext {
       apiURL = site.apiURL,
       swaggerURL = site.swaggerURL,
       swaggerUIURL = site.swaggerUserInterfaceURL,
-      projectURL =  config.metaInfo.projectURL,
+      projectURL = config.metaInfo.projectURL,
       buildVersion = config.metaInfo.version,
-      buildDateTime = config.metaInfo.dateTime
+      buildDateTime = config.metaInfo.dateTime,
+      contactEmail = config.metaInfo.contact
     )
   }
 }
-

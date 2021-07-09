@@ -7,9 +7,7 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import counters.ServiceDependencies
 import counters.model.{CounterState, OperationOrigin, ServiceStats}
-import counters.tools.Templating
-import yamusca.imports._
-import yamusca.implicits._
+import counters.templates.html.{HomeTemplate, StateTemplate}
 
 case class HomeContext(
   context: PageContext,
@@ -33,14 +31,7 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
   val pageContext = PageContext(dependencies.config.counters)
 
   implicit val ec = scala.concurrent.ExecutionContext.global
-  implicit val serviceStatsConverter = ValueConverter.deriveConverter[ServiceStats]
-  implicit val pageContextConverter = ValueConverter.deriveConverter[PageContext]
-  implicit val homeContextConverter = ValueConverter.deriveConverter[HomeContext]
-  implicit val stateContextConverter = ValueConverter.deriveConverter[StateContext]
 
-  val templating: Templating = Templating(dependencies.config)
-  val homeLayout = (context: Context) => templating.makeTemplateLayout("counters/templates/home.html")(context)
-  val stateLayout = (context: Context) => templating.makeTemplateLayout("counters/templates/state.html")(context)
 
   def increment: Route = {
     path(JavaUUID / "count" / JavaUUID) { (groupId, counterId) =>
@@ -90,7 +81,7 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
                 count = state.count,
                 lastUpdated = state.lastUpdated.toString
               )
-              val content = stateLayout(stateContext.asContext)
+              val content = StateTemplate.render(stateContext).toString
               val contentType = `text/html` withCharset `UTF-8`
               HttpResponse(entity = HttpEntity(contentType, content), headers = noClientCacheHeaders)
             }
@@ -108,7 +99,7 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
             context = pageContext,
             stats = stats
           )
-          val content = homeLayout(homeContext.asContext)
+          val content = HomeTemplate.render(homeContext).toString()
           val contentType = `text/html` withCharset `UTF-8`
           HttpResponse(entity = HttpEntity(contentType, content), headers = noClientCacheHeaders)
         }

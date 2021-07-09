@@ -21,38 +21,30 @@ import akka.http.scaladsl.model.MediaTypes.{`application/json`, `text/html`}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import counters.ServiceDependencies
-import counters.tools.Templating
-import yamusca.imports._
-import yamusca.implicits._
-
+import counters.templates.txt.SwaggerJson
+import counters.templates.html.SwaggerUI
 
 case class SwaggerRouting(dependencies: ServiceDependencies) extends Routing {
-  val pageContext = PageContext(dependencies.config.counters)
-  implicit val homeContextConverter = ValueConverter.deriveConverter[PageContext]
-
-  val templating: Templating = Templating(dependencies.config)
-  val swaggerJsonLayout = (context: Context) => templating.makeTemplateLayout("counters/templates/swagger.json")(context)
-  val swaggerUILayout = (context: Context) => templating.makeTemplateLayout("counters/templates/swagger-ui.html")(context)
-
+  val pageContext        = PageContext(dependencies.config.counters)
+  val swaggerJsonContent = SwaggerJson.render(pageContext).toString
+  val swaggerUIContent   = SwaggerUI.render(pageContext).toString
 
   def swaggerSpec: Route = path("swagger.json") {
-    val content = swaggerJsonLayout(pageContext.asContext)
     val contentType = `application/json`
     complete {
-      HttpResponse(entity = HttpEntity(contentType, content), headers = noClientCacheHeaders)
+      HttpResponse(entity = HttpEntity(contentType, swaggerJsonContent), headers = noClientCacheHeaders)
     }
   }
 
   def swaggerUI: Route =
     pathEndOrSingleSlash {
       get {
-        val content = swaggerUILayout(pageContext.asContext)
         val contentType = `text/html` withCharset `UTF-8`
         complete {
-          HttpResponse(entity = HttpEntity(contentType, content), headers = noClientCacheHeaders)
+          HttpResponse(entity = HttpEntity(contentType, swaggerUIContent), headers = noClientCacheHeaders)
         }
       }
     }
 
-  override def routes: Route = pathPrefix("swagger") (swaggerUI ~ swaggerSpec)
+  override def routes: Route = pathPrefix("swagger") { concat(swaggerUI, swaggerSpec) }
 }
