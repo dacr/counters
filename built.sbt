@@ -7,6 +7,8 @@ scmInfo := Some(ScmInfo(url(s"https://github.com/dacr/counters.git"), s"git@gith
 Compile / mainClass := Some("counters.Main")
 packageBin / mainClass := Some("counters.Main")
 
+versionScheme := Some("semver-spec")
+
 scalaVersion := "2.13.6"
 
 scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8", "-feature")
