@@ -32,7 +32,7 @@ case class AssetsRouting(dependencies:ServiceDependencies) extends Routing {
     val staticResourcesSubDirectories = List("js", "css", "images", "fonts", "pdf", "txt")
     val routes = for {resourceDirectory <- staticResourcesSubDirectories} yield {
       path(resourceDirectory / RemainingPath) { resource =>
-        respondWithHeaders(noClientCacheHeaders) {
+        respondWithHeaders(clientCacheHeaders) {
           getFromResource(s"counters/static-content/$resourceDirectory/${resource.toString()}")
         }
       }
