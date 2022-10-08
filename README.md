@@ -1,4 +1,4 @@
-# ![](images/logo-base-64.png) Counters [![][CountersImg]][CountersLnk]
+# ![](images/logo-base-64.png) Counters ![tests][tests-workflow] [![License][licenseImg]][licenseLink] [![][CountersImg]][CountersLnk]
 Just count whatever you want. Two steps to create a counter :
 1. Create a counters group
 2. Create your counter
@@ -41,13 +41,13 @@ cs launch fr.janalyse::counters:0.1.0
 
 ## Configuration
 
-| Environment variable      | Description                                       | default value
-| ------------------------- | ------------------------------------------------- | -----------------
-| COUNTERS_LISTEN_IP        | Listening network interface                       | "0.0.0.0"
-| COUNTERS_LISTEN_PORT      | Listening port                                    | 8080
-| COUNTERS_PREFIX           | Add a prefix to all defined routes                | ""
-| COUNTERS_URL              | How this service is known from outside            | "http://127.0.0.1:8080"
-| COUNTERS_STORE_PATH       | Where data is stored                              | "/tmp/counters-data"
+| Environment variable | Description                            | default value           |
+|----------------------|----------------------------------------|-------------------------|
+| COUNTERS_LISTEN_IP   | Listening network interface            | "0.0.0.0"               |
+| COUNTERS_LISTEN_PORT | Listening port                         | 8080                    |
+| COUNTERS_PREFIX      | Add a prefix to all defined routes     | ""                      |
+| COUNTERS_URL         | How this service is known from outside | "http://127.0.0.1:8080" |
+| COUNTERS_STORE_PATH  | Where data is stored                   | "/tmp/counters-data"    |
 
 [cs]: https://get-coursier.io/
 
@@ -57,3 +57,8 @@ cs launch fr.janalyse::counters:0.1.0
 [Counters]:       https://github.com/dacr/counters
 [CountersImg]: https://img.shields.io/maven-central/v/fr.janalyse/counters_2.13.svg
 [CountersLnk]: https://search.maven.org/#search%7Cga%7C1%7Cfr.janalyse.counters
+
+[tests-workflow]: https://github.com/dacr/counters/actions/workflows/scala.yml/badge.svg
+
+[licenseImg]: https://img.shields.io/github/license/dacr/counters.svg
+[licenseLink]: LICENSE

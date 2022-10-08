@@ -1,7 +1,7 @@
 @import counters.routing.StateContext
 @(state: StateContext)
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
@@ -12,39 +12,40 @@
     <title>@state.context.title</title>
   </head>
   <body>
-    <p/>
-    <div class="container">
-      <div class="jumbotron">
+    <div class="container py-4">
+      <div class="p-5 mb-4 bg-light rounded-5">
+        <div class="jumbotron">
 
-        <h1>
-          <img src="@state.context.base/images/logo-base-64.png"/>
-          @state.groupName - @state.counterName
-        </h1>
+          <h1 class="display-4">
+            <img src="@state.context.base/images/logo-base-64.png"/>
+            @state.groupName - @state.counterName
+          </h1>
 
-        <div class="row">
-          <div class="column">
-            <div class="card">
-              <p><i class="fa fa-check fa-2x"></i></p>
-              <h2>@state.count</h2>
-              <p>Visits</p>
+          <div class="row">
+            <div class="column">
+              <div class="card">
+                <p><i class="fa fa-check fa-2x"></i></p>
+                <h2>@state.count</h2>
+                <p>Visits</p>
+              </div>
             </div>
           </div>
+
+          <hr class="my-4"/>
+
+          <p class="text-right"><small>
+            <i>
+              <a href="@state.context.projectURL">@state.context.appcode</a> @state.context.buildVersion
+            </i>
+          </small>
+          </p>
+
         </div>
-
-        <hr/>
-
-        <p align="right"><small>
-          <i>
-            <a href="@state.context.projectURL">@state.context.appcode</a> @state.context.buildVersion
-          </i>
-        </small>
-        </p>
       </div>
     </div>
 
     <script src="@state.context.base/assets/jquery/jquery.min.js"></script>
-    <script src="@state.context.base/assets/popper.js/umd/popper.min.js"></script>
-    <script src="@state.context.base/assets/bootstrap/js/bootstrap.min.js"></script>
+    <script src="@state.context.base/assets/bootstrap/js/bootstrap.bundle.min.js"></script>
 
   </body>
 </html>

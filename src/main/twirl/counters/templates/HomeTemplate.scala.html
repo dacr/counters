@@ -1,7 +1,7 @@
 @import counters.routing.HomeContext
 @(home: HomeContext)
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
@@ -10,41 +10,41 @@
     <title>@home.context.title</title>
   </head>
   <body>
-    <p/>
-    <div class="container">
-      <div class="jumbotron">
+    <div class="container py-4">
+      <div class="p-5 mb-4 bg-light rounded-5">
+        <div class="jumbotron">
 
-        <h1><img src="@home.context.base/images/logo-base-64.png"/> <a href="@home.context.base">@home.context.title</a></h1>
+          <h1><a href="@home.context.base"><img src="@home.context.base/images/logo-base-64.png"/></a> @home.context.title</h1>
 
-        <p class="text-justify">
-          A <b>@home.context.appcode</b> service with API to count anything with just a simple get request sent
-          to your defined counters. Create QR Code with the counter link, and count how many people flash and
-          visit.
-        </p>
-        <p>
-          <b>@home.stats.groupCount</b> groups and <b>@home.stats.countersCount</b> counters are currently active.
-        </p>
+          <p class="lead text-sm-start">
+            A <b>@home.context.appcode</b> service with API to count anything with just a simple get request sent
+            to your defined counters. Create QR Code with the counter link, and count how many people flash and
+            visit.
+          </p>
+          <p>
+            <b>@home.stats.groupCount</b> groups and <b>@home.stats.countersCount</b> counters are currently active.
+          </p>
 
-        <hr/>
+          <hr class="my-4"/>
 
-        <p>
-          Take a look to the <a href="@home.context.swaggerUIURL">Swagger API specification</a> to use this service
-          or go to <a href="@home.context.projectURL">the @home.context.appcode github repository</a> if you want
-          to contribute.
-        </p>
-        <p align="right"><small>
-          <i>
-            <a href="@home.context.projectURL">@home.context.appcode</a> @home.context.buildVersion
-          </i>
-        </small>
-        </p>
+          <p>
+            Take a look to the <a href="@home.context.swaggerUIURL">Swagger API specification</a> to use this service
+            or go to <a href="@home.context.projectURL">the @home.context.appcode github repository</a> if you want
+            to contribute.
+          </p>
+          <p class="text-right"><small>
+            <i>
+              <a href="@home.context.projectURL">@home.context.appcode</a> @home.context.buildVersion
+            </i>
+          </small>
+          </p>
 
+        </div>
       </div>
     </div>
 
     <script src="@home.context.base/assets/jquery/jquery.min.js"></script>
-    <script src="@home.context.base/assets/popper.js/umd/popper.min.js"></script>
-    <script src="@home.context.base/assets/bootstrap/js/bootstrap.min.js"></script>
+    <script src="@home.context.base/assets/bootstrap/js/bootstrap.bundle.min.js"></script>
 
   </body>
 </html>
