@@ -15,8 +15,8 @@
  */
 package counters
 
-import akka.http.scaladsl.model.headers.`Content-Location`
-import akka.http.scaladsl.testkit.ScalatestRouteTest
+import org.apache.pekko.http.scaladsl.model.headers.`Content-Location`
+import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import counters.dependencies.countersengine.{NopCounterStorage, StandardCountersEngine}
 import counters.model.{CounterCreateInputs, CountersGroupCreateInputs}
 import counters.routing.Health
@@ -39,7 +39,7 @@ class ServiceTest extends AsyncWordSpec with should.Matchers with ScalatestRoute
   "Counters Service" should {
     "Respond OK when pinged" in {
       Get("/health") ~> routes ~> check {
-        import de.heikoseeberger.akkahttpjson4s.Json4sSupport._
+        import com.github.pjfanning.pekkohttpjson4s.Json4sSupport._
         responseAs[Health] shouldBe Health(true, "alive")
       }
     }

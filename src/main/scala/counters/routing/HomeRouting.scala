@@ -1,10 +1,10 @@
 package counters.routing
 
-import akka.http.scaladsl.model.HttpCharsets._
-import akka.http.scaladsl.model.{HttpEntity, HttpResponse, StatusCodes}
-import akka.http.scaladsl.model.MediaTypes.`text/html`
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.Route
+import org.apache.pekko.http.scaladsl.model.HttpCharsets._
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpResponse, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.MediaTypes.`text/html`
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.Route
 import counters.ServiceDependencies
 import counters.model.{CounterState, OperationOrigin, ServiceStats}
 import counters.templates.html.{HomeTemplate, StateTemplate}
@@ -39,7 +39,7 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
         optionalHeaderValueByName("User-Agent") { agent =>
           extractClientIP { ip =>
             import counters.tools.JsonImplicits._
-            import de.heikoseeberger.akkahttpjson4s.Json4sSupport._
+            import com.github.pjfanning.pekkohttpjson4s.Json4sSupport._
             val origin = OperationOrigin(ip.toOption.map(_.getHostAddress), agent)
             onSuccess(dependencies.engine.counterIncrement(groupId, counterId, Some(origin))) {
               case Some(state) if state.counter.redirect.isDefined =>

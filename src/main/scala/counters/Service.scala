@@ -15,8 +15,8 @@
  */
 package counters
 
-import akka.actor.ActorSystem
-import akka.http.scaladsl._
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl._
 import com.typesafe.config.ConfigFactory
 import org.slf4j.Logger
 
@@ -34,7 +34,7 @@ case class Service(dependencies: ServiceDependencies, servicesRoutes: ServiceRou
   logger.info(s"$appCode service version $version is starting")
 
   val config = ConfigFactory.load() // akka specific config is accessible under the path named 'counters'
-  implicit val system: ActorSystem = akka.actor.ActorSystem(s"akka-http-$appCode-system", config.getConfig("counters"))
+  implicit val system: ActorSystem = org.apache.pekko.actor.ActorSystem(s"akka-http-$appCode-system", config.getConfig("counters"))
   implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
   val bindingFuture: Future[Http.ServerBinding] = Http().newServerAt(interface = interface, port = port).bindFlow(servicesRoutes.routes)

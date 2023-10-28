@@ -15,10 +15,10 @@
  */
 package counters.dependencies.countersengine
 
-import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
-import akka.util.Timeout
-import akka.actor.typed.scaladsl.AskPattern._
+import org.apache.pekko.actor.typed.scaladsl.Behaviors
+import org.apache.pekko.actor.typed.{ActorRef, ActorSystem, Behavior}
+import org.apache.pekko.util.Timeout
+import org.apache.pekko.actor.typed.scaladsl.AskPattern._
 import counters.ServiceConfig
 import counters.model.{Counter, CounterCreateInputs, CounterState, CountersGroup, CountersGroupCreateInputs, OperationOrigin, ServiceStats}
 import counters.tools.JsonImplicits
