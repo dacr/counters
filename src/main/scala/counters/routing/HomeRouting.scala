@@ -5,9 +5,11 @@ import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpResponse, StatusCod
 import org.apache.pekko.http.scaladsl.model.MediaTypes.`text/html`
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
-import counters.ServiceDependencies
+import counters.{ServiceDependencies, SiteConfig}
 import counters.model.{CounterState, OperationOrigin, ServiceStats}
 import counters.templates.html.{HomeTemplate, StateTemplate}
+
+import scala.concurrent.ExecutionContextExecutor
 
 case class HomeContext(
   context: PageContext,
@@ -27,10 +29,10 @@ case class StateContext(
 case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
   override def routes: Route = concat(increment, home, state)
 
-  val site = dependencies.config.counters.site
-  val pageContext = PageContext(dependencies.config.counters)
+  val site: SiteConfig = dependencies.config.counters.site
+  val pageContext: PageContext = PageContext(dependencies.config.counters)
 
-  implicit val ec = scala.concurrent.ExecutionContext.global
+  implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
 
 
   def increment: Route = {

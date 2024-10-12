@@ -18,12 +18,12 @@ package counters.dependencies.countersengine
 import org.apache.pekko.actor.typed.scaladsl.Behaviors
 import org.apache.pekko.actor.typed.{ActorRef, ActorSystem, Behavior}
 import org.apache.pekko.util.Timeout
-import org.apache.pekko.actor.typed.scaladsl.AskPattern._
+import org.apache.pekko.actor.typed.scaladsl.AskPattern.*
 import counters.ServiceConfig
 import counters.model.{Counter, CounterCreateInputs, CounterState, CountersGroup, CountersGroupCreateInputs, OperationOrigin, ServiceStats}
 import counters.tools.JsonImplicits
 import org.apache.commons.io.FileUtils
-import org.json4s.{Extraction, JValue}
+import org.json4s.*
 import org.json4s.jackson.JsonMethods.parse
 import org.json4s.jackson.Serialization.write
 import org.slf4j.LoggerFactory
@@ -31,8 +31,8 @@ import org.slf4j.LoggerFactory
 import java.io.{File, FileFilter}
 import java.time.Instant
 import java.util.UUID
-import scala.concurrent.Future
-import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.concurrent.duration.*
 import scala.util.Try
 
 
@@ -103,7 +103,7 @@ class BasicCountersFileSystemStorage(config: ServiceConfig) extends CountersStor
 
   def groupsUUIDs(): Iterable[UUID] = {
     groupsDirectories()
-      .getOrElse(Array.empty)
+      .getOrElse(Array.empty[File])
       .map(_.getName)
       .flatMap(name => Try(UUID.fromString(name)).toOption)
   }
@@ -122,7 +122,7 @@ class BasicCountersFileSystemStorage(config: ServiceConfig) extends CountersStor
 
   def countersUUIDs(groupId: UUID): Iterable[UUID] = {
     countersDirectories(groupId)
-      .getOrElse(Array.empty)
+      .getOrElse(Array.empty[File])
       .map(_.getName)
       .flatMap(name => Try(UUID.fromString(name)).toOption)
   }
@@ -487,7 +487,7 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
   // =================================================================================
 
   implicit val countersSystem: ActorSystem[GuardianCommand] = ActorSystem(guardianBehavior(), "StandardCountersEngineActorSystem")
-  implicit val ec = countersSystem.executionContext
+  implicit val ec: ExecutionContextExecutor = countersSystem.executionContext
   implicit val timeout: Timeout = 3.seconds
 
   countersSystem ! GuardianSetupCommand

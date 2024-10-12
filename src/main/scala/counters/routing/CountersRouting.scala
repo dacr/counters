@@ -15,16 +15,17 @@
  */
 package counters.routing
 
-import org.apache.pekko.http.scaladsl.model._
-import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.model.*
+import org.apache.pekko.http.scaladsl.server.Directives.*
 import org.apache.pekko.http.scaladsl.server.Route
-import com.github.pjfanning.pekkohttpjson4s.Json4sSupport._
+import com.github.pjfanning.pekkohttpjson4s.Json4sSupport.*
 import org.slf4j.LoggerFactory
 import counters.ServiceDependencies
 import counters.model.{CounterCreateInputs, CountersGroupCreateInputs, OperationOrigin}
 import counters.tools.DateTimeTools
 
 import java.util.UUID
+import scala.concurrent.ExecutionContextExecutor
 
 case class CountersRouting(dependencies: ServiceDependencies) extends Routing with DateTimeTools {
   private val logger = LoggerFactory.getLogger(getClass)
@@ -34,7 +35,7 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
   val startedDate = now()
   val instanceUUID = UUID.randomUUID().toString
 
-  implicit val ec = scala.concurrent.ExecutionContext.global
+  implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
 
   override def routes: Route = pathPrefix("api") {
     concat(

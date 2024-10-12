@@ -33,10 +33,10 @@ curl $BASE/$GROUP/state/$COUNTER
 
 ## Quick local start
 
-Thanks to [coursier][cs] from @alxarchambault,
+Thanks to [scala-cli][scl],
 this application is quite easy to start, just execute :
 ```
-cs launch fr.janalyse::counters:0.1.0
+scala-cli --dep fr.janalyse::counters:1.0.6 -e 'counters.Main.main(args)'
 ```
 
 ## Configuration
@@ -50,6 +50,7 @@ cs launch fr.janalyse::counters:0.1.0
 | COUNTERS_STORE_PATH  | Where data is stored                   | "/tmp/counters-data"    |
 
 [cs]: https://get-coursier.io/
+[scl]: https://scala-cli.virtuslab.org/
 
 [deployed]:   https://mapland.fr/counters
 [akka-http]:  https://doc.akka.io/docs/akka-http/current/index.html

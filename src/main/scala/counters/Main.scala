@@ -15,11 +15,11 @@
  */
 package counters
 
-import ch.qos.logback.classic.util.ContextInitializer
+import ch.qos.logback.classic.ClassicConstants
 import org.slf4j.Logger
 
 object Main {
-  System.setProperty(ContextInitializer.CONFIG_FILE_PROPERTY, "counters/logback.xml")
+  System.setProperty(ClassicConstants.CONFIG_FILE_PROPERTY, "counters/logback.xml")
 
   def start(): Service = {
     val logger: Logger = org.slf4j.LoggerFactory.getLogger("CountersMain")

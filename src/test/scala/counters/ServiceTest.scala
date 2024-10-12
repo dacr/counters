@@ -21,11 +21,11 @@ import counters.dependencies.countersengine.{NopCounterStorage, StandardCounters
 import counters.model.{CounterCreateInputs, CountersGroupCreateInputs}
 import counters.routing.Health
 import counters.tools.JsonImplicits
-import org.scalatest.matchers._
-import org.scalatest.wordspec._
-import org.scalatest.OptionValues._
+import org.scalatest.matchers.*
+import org.scalatest.wordspec.*
+import org.scalatest.OptionValues.*
 
-import java.net.URL
+import java.net.{URI, URL}
 
 
 class ServiceTest extends AsyncWordSpec with should.Matchers with ScalatestRouteTest with JsonImplicits {
@@ -68,7 +68,7 @@ class ServiceTest extends AsyncWordSpec with should.Matchers with ScalatestRoute
     "Increment a counter" in {
       val redirectTo = "http://mapland.fr/counters/dummy"
       val groupInputs = CountersGroupCreateInputs("truc",None,None)
-      val counterInputs = CounterCreateInputs("counter", None, Some(new URL(redirectTo)), None)
+      val counterInputs = CounterCreateInputs("counter", None, Some(URI(redirectTo).toURL), None)
       engine
         .groupCreate(groupInputs)
         .flatMap(group => engine.counterCreate(group.id, counterInputs) )
@@ -78,7 +78,7 @@ class ServiceTest extends AsyncWordSpec with should.Matchers with ScalatestRoute
           Get(s"/$groupId/count/$counterId") ~> routes ~> check {
             response.status.intValue() shouldBe 307
             val location = header("Location").value.value()
-            val locationURL = new URL(location)
+            val locationURL = URI(location).toURL
             val params =
               locationURL
                 .getQuery
