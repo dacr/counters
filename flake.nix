@@ -86,7 +86,7 @@
               "d ${config.services.counters.datastore} 0750 ${config.services.counters.user} ${config.services.counters.user} -"
         ];
         systemd.services.counters = {
-          description = "Spy service";
+          description = "Counters service";
           environment = {
             COUNTERS_LISTEN_IP   = config.services.counters.ip;
             COUNTERS_LISTEN_PORT = (toString config.services.counters.port);
