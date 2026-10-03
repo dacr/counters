@@ -15,16 +15,28 @@
  */
 package counters.model
 
+import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
+import com.github.plokhotnyuk.jsoniter_scala.macros.JsonCodecMaker
+import counters.tools.JsonCodecs.given
+import sttp.tapir.Schema
+import sttp.tapir.Schema.annotations.description
+
 import java.time.Instant
 
+@description("Who and when an operation has been done")
 case class OperationOrigin(
+  @description("When the operation has been done")
   createdOn: Instant,
+  @description("Client IP address")
   createdByIpAddress: Option[String],
-  createdByUserAgent: Option[String],
-)
+  @description("Client user agent")
+  createdByUserAgent: Option[String]
+) derives Schema
 
 object OperationOrigin {
-  def apply(ipAddress:Option[String], userAgent:Option[String]):OperationOrigin = {
+  given JsonValueCodec[OperationOrigin] = JsonCodecMaker.make
+
+  def apply(ipAddress: Option[String], userAgent: Option[String]): OperationOrigin = {
     OperationOrigin(
       createdOn = Instant.now(),
       createdByIpAddress = ipAddress,

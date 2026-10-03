@@ -15,6 +15,12 @@
  */
 package counters.model
 
+import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
+import com.github.plokhotnyuk.jsoniter_scala.macros.JsonCodecMaker
+import counters.tools.JsonCodecs.given
+import sttp.tapir.Schema
+import sttp.tapir.Schema.annotations.description
+
 import java.net.URL
 import java.util.UUID
 
@@ -32,11 +38,23 @@ case class CounterCreateInputs(
   origin: Option[OperationOrigin]
 ) extends CounterRequirements
 
+@description("A counter, always part of a group of counters")
 case class Counter(
+  @description("Counter unique identifier")
   id: UUID,
-  groupId:UUID,
+  @description("Unique identifier of the group this counter belongs to")
+  groupId: UUID,
+  @description("Counter name")
   name: String,
+  @description("Counter description")
   description: Option[String],
+  @description("Where to redirect the browser once the counter has been incremented through the count page")
   redirect: Option[URL],
+  @description("Counter creation origin")
   origin: Option[OperationOrigin]
 ) extends CounterRequirements
+    derives Schema
+
+object Counter {
+  given JsonValueCodec[Counter] = JsonCodecMaker.make
+}

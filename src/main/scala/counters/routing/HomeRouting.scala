@@ -15,16 +15,15 @@
  */
 package counters.routing
 
-import org.apache.pekko.http.scaladsl.model.HttpCharsets._
-import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpResponse, StatusCodes}
-import org.apache.pekko.http.scaladsl.model.MediaTypes.`text/html`
-import org.apache.pekko.http.scaladsl.server.Directives._
-import org.apache.pekko.http.scaladsl.server.Route
 import counters.{ServiceDependencies, SiteConfig}
-import counters.model.{CounterState, OperationOrigin, ServiceStats}
+import counters.api.ApiEndpoints
+import counters.model.ServiceStats
 import counters.templates.html.{HomeTemplate, StateTemplate}
+import sttp.model.{HeaderNames, StatusCode}
+import sttp.tapir.*
 
-import scala.concurrent.ExecutionContextExecutor
+import java.util.UUID
+import scala.concurrent.{ExecutionContext, Future}
 
 case class HomeContext(
   context: PageContext,
@@ -41,88 +40,83 @@ case class StateContext(
   count: Long
 )
 
+/** Html pages, not part of the API documentation */
 case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
-  override def routes: Route = concat(increment, home, state)
+  private given ExecutionContext = ExecutionContext.global
 
-  val site: SiteConfig = dependencies.config.counters.site
+  val site: SiteConfig         = dependencies.config.counters.site
   val pageContext: PageContext = PageContext(dependencies.config.counters)
 
-  implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
+  private val notFoundMessage = "group or counter not found"
 
+  private val pageEndpoint =
+    endpoint.get
+      .out(htmlBodyUtf8)
+      .out(header(Routing.noClientCacheHeader))
+      .errorOut(statusCode(StatusCode.NotFound).and(stringBody))
 
-  def increment: Route = {
-    path(JavaUUID / "count" / JavaUUID) { (groupId, counterId) =>
-      get {
-        optionalHeaderValueByName("User-Agent") { agent =>
-          extractClientIP { ip =>
-            import counters.tools.JsonImplicits._
-            import com.github.pjfanning.pekkohttpjson4s.Json4sSupport._
-            val origin = OperationOrigin(ip.toOption.map(_.getHostAddress), agent)
-            onSuccess(dependencies.engine.counterIncrement(groupId, counterId, Some(origin))) {
-              case Some(state) if state.counter.redirect.isDefined =>
-                val url = state.counter.redirect.get.toString
-                val query = s"?count=${state.count}&groupId=$groupId&counterId=$counterId&stateId=${state.id}"
-                redirect(s"$url?$query", StatusCodes.TemporaryRedirect)
-              case Some(state) => // no redirect configured, so going back to the default counter state page
-                val uri = s"${site.baseURL}/$groupId/state/$counterId"
-                redirect(uri, StatusCodes.TemporaryRedirect)
-              case None =>
-                complete(StatusCodes.NotFound -> "group or counter not found")
+  private val increment =
+    endpoint.get
+      .in(path[UUID]("groupId") / "count" / path[UUID]("counterId"))
+      .in(ApiEndpoints.operationOrigin)
+      .out(statusCode(StatusCode.TemporaryRedirect).and(header[String](HeaderNames.Location)))
+      .errorOut(statusCode(StatusCode.NotFound).and(stringBody))
+      .serverLogic[Future] { (groupId, counterId, origin) =>
+        dependencies.engine.counterIncrement(groupId, counterId, Some(origin)).map {
+          case Some(state) =>
+            state.counter.redirect match {
+              case Some(redirect) =>
+                val url       = redirect.toString
+                val separator = if (url.contains("?")) "&" else "?"
+                val query     = s"count=${state.count}&groupId=$groupId&counterId=$counterId&stateId=${state.id}"
+                Right(s"$url$separator$query")
+              case None => // no redirect configured, so going back to the default counter state page
+                Right(s"${site.baseURL}/$groupId/state/$counterId")
             }
-          }
+          case None =>
+            Left(notFoundMessage)
         }
       }
-    }
-  }
 
   // Quick & dirty hack to avoid any kind of html/javascript injection
-  def secureString(input:String):String = {
+  def secureString(input: String): String = {
     input
       .replaceAll("""[^-0-9a-zA-Z_'.,;!:# ]""", "")
       .replaceAll("""\s{2,}""", " ")
   }
 
-  def state: Route = {
-    path(JavaUUID / "state" / JavaUUID) { (groupId, counterId) =>
-      get {
-        onSuccess(dependencies.engine.stateGet(groupId, counterId)) {
-          case None => complete(StatusCodes.NotFound -> "group or counter not found")
+  private val state =
+    pageEndpoint
+      .in(path[UUID]("groupId") / "state" / path[UUID]("counterId"))
+      .serverLogic[Future] { (groupId, counterId) =>
+        dependencies.engine.stateGet(groupId, counterId).map {
+          case None        => Left(notFoundMessage)
           case Some(state) =>
-            complete {
-              val stateContext = StateContext(
-                context = pageContext,
-                groupName = secureString(state.group.name),
-                groupDescription = secureString(state.group.description.getOrElse("")),
-                counterName = secureString(state.counter.name),
-                counterDescription = secureString(state.counter.description.getOrElse("")),
-                count = state.count,
-                lastUpdated = state.lastUpdated.toString
-              )
-              val content = StateTemplate.render(stateContext).toString
-              val contentType = `text/html` withCharset `UTF-8`
-              HttpResponse(entity = HttpEntity(contentType, content), headers = noClientCacheHeaders)
-            }
+            val stateContext = StateContext(
+              context = pageContext,
+              groupName = secureString(state.group.name),
+              groupDescription = secureString(state.group.description.getOrElse("")),
+              counterName = secureString(state.counter.name),
+              counterDescription = secureString(state.counter.description.getOrElse("")),
+              count = state.count,
+              lastUpdated = state.lastUpdated.toString
+            )
+            Right(StateTemplate.render(stateContext).toString)
         }
       }
-    }
-  }
 
-
-  def home: Route = pathEndOrSingleSlash {
-    get {
-      onSuccess(dependencies.engine.serviceStatsGet()) { stats =>
-        complete {
+  private val home =
+    pageEndpoint
+      .in("") // root path only, an endpoint without any path input matches all paths
+      .serverLogic[Future] { _ =>
+        dependencies.engine.serviceStatsGet().map { stats =>
           val homeContext = HomeContext(
             context = pageContext,
             stats = stats
           )
-          val content = HomeTemplate.render(homeContext).toString()
-          val contentType = `text/html` withCharset `UTF-8`
-          HttpResponse(entity = HttpEntity(contentType, content), headers = noClientCacheHeaders)
+          Right(HomeTemplate.render(homeContext).toString)
         }
       }
-    }
-  }
 
-
+  override def endpoints = List(increment, state, home)
 }

@@ -15,14 +15,31 @@
  */
 package counters.model
 
+import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
+import com.github.plokhotnyuk.jsoniter_scala.macros.JsonCodecMaker
+import counters.tools.JsonCodecs.given
+import sttp.tapir.Schema
+import sttp.tapir.Schema.annotations.description
+
 import java.time.Instant
 import java.util.UUID
 
+@description("A counter state, a new state is created on each counter increment")
 case class CounterState(
-  id:UUID,
-  group:CountersGroup,
-  counter:Counter,
-  count:Long,
+  @description("State unique identifier")
+  id: UUID,
+  @description("The group the counter belongs to")
+  group: CountersGroup,
+  @description("The counter")
+  counter: Counter,
+  @description("Current counter value")
+  count: Long,
+  @description("When the counter has been last updated")
   lastUpdated: Instant,
+  @description("Origin of the last counter update")
   lastOrigin: Option[OperationOrigin]
-)
+) derives Schema
+
+object CounterState {
+  given JsonValueCodec[CounterState] = JsonCodecMaker.make
+}

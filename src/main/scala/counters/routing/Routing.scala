@@ -15,16 +15,19 @@
  */
 package counters.routing
 
-import org.apache.pekko.http.scaladsl.model.HttpHeader
-import org.apache.pekko.http.scaladsl.model.headers.CacheDirectives.{`max-age`, `must-revalidate`, `no-cache`, `no-store`, `proxy-revalidate`}
-import org.apache.pekko.http.scaladsl.model.headers.`Cache-Control`
-import org.apache.pekko.http.scaladsl.server.Route
-import counters.tools.JsonImplicits
+import sttp.model.Header
+import sttp.model.headers.CacheDirective
+import sttp.tapir.server.ServerEndpoint
 
-trait Routing extends JsonImplicits {
-  def routes: Route
+import scala.concurrent.Future
+import scala.concurrent.duration.*
 
-  val noClientCacheHeaders: List[HttpHeader] = List(`Cache-Control`(`no-store`))
+trait Routing {
+  def endpoints: List[ServerEndpoint[Any, Future]]
+}
 
-  val clientCacheHeaders: List[HttpHeader] = List(`Cache-Control`(`max-age`(3600), `must-revalidate`, `proxy-revalidate`))
+object Routing {
+  val noClientCacheHeader: Header = Header.cacheControl(CacheDirective.NoStore)
+
+  val clientCacheHeader: Header = Header.cacheControl(CacheDirective.MaxAge(3600.seconds), CacheDirective.MustRevalidate, CacheDirective.ProxyRevalidate)
 }

@@ -15,36 +15,51 @@
  */
 package counters.routing
 
-import org.apache.pekko.http.scaladsl.model.HttpCharsets._
-import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpResponse}
-import org.apache.pekko.http.scaladsl.model.MediaTypes.{`application/json`, `text/html`}
-import org.apache.pekko.http.scaladsl.server.Directives._
-import org.apache.pekko.http.scaladsl.server.Route
 import counters.ServiceDependencies
-import counters.templates.txt.SwaggerJson
-import counters.templates.html.SwaggerUI
+import counters.api.ApiEndpoints
+import io.circe.Printer
+import io.circe.syntax.*
+import sttp.apispec.openapi.{Contact, Info, License, OpenAPI}
+import sttp.apispec.openapi.circe.*
+import sttp.apispec.openapi.circe.yaml.*
+import sttp.tapir.*
+import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
+import sttp.tapir.swagger.{SwaggerUI, SwaggerUIOptions}
 
+import scala.concurrent.Future
+
+/** Exposes the OpenAPI specification generated from the API endpoints definitions, and the swagger user interface */
 case class SwaggerRouting(dependencies: ServiceDependencies) extends Routing {
-  val pageContext        = PageContext(dependencies.config.counters)
-  val swaggerJsonContent = SwaggerJson.render(pageContext).toString
-  val swaggerUIContent   = SwaggerUI.render(pageContext).toString
+  private val config = dependencies.config.counters
+  private val site   = config.site
 
-  def swaggerSpec: Route = path("swagger.json") {
-    val contentType = `application/json`
-    complete {
-      HttpResponse(entity = HttpEntity(contentType, swaggerJsonContent), headers = noClientCacheHeaders)
-    }
-  }
+  val openAPI: OpenAPI =
+    OpenAPIDocsInterpreter()
+      .toOpenAPI(
+        ApiEndpoints.all,
+        Info(
+          title = s"${config.application.name} API",
+          version = config.metaInfo.version,
+          description = Some("counters service"),
+          termsOfService = Some(s"${site.baseURL}/txt/TERMS-OF-SERVICE.txt"),
+          contact = Some(Contact(email = Some(config.metaInfo.contact), url = Some(config.metaInfo.projectURL))),
+          license = Some(License("Apache 2.0", Some(s"${site.baseURL}/txt/LICENSE-2.0.txt")))
+        )
+      )
+      .addServer(site.baseURL)
 
-  def swaggerUI: Route =
-    pathEndOrSingleSlash {
-      get {
-        val contentType = `text/html` withCharset `UTF-8`
-        complete {
-          HttpResponse(entity = HttpEntity(contentType, swaggerUIContent), headers = noClientCacheHeaders)
-        }
-      }
-    }
+  private val swaggerUIEndpoints =
+    SwaggerUI[Future](openAPI.toYaml, SwaggerUIOptions.default.pathPrefix(List("swagger")))
 
-  override def routes: Route = pathPrefix("swagger") { concat(swaggerUI, swaggerSpec) }
+  // kept for backward compatibility, the swagger user interface uses the yaml specification
+  private val swaggerJson = Printer.spaces2.print(openAPI.asJson)
+
+  private val swaggerJsonEndpoint =
+    endpoint.get
+      .in("swagger" / "swagger.json")
+      .out(stringBodyUtf8AnyFormat(Codec.string.format(CodecFormat.Json())))
+      .out(header(Routing.noClientCacheHeader))
+      .serverLogicSuccess[Future](_ => Future.successful(swaggerJson))
+
+  override def endpoints = swaggerJsonEndpoint :: swaggerUIEndpoints
 }

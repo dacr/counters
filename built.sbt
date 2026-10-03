@@ -10,7 +10,6 @@ scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8", "-featur
 
 lazy val versions = new {
   // client side dependencies
-  val swaggerui = "5.32.15"
   val bootstrap = "5.3.8"
   val jquery    = "3.7.1"
   val awesome   = "6.7.2"
@@ -19,8 +18,8 @@ lazy val versions = new {
   val pureConfig      = "0.17.10"
   val pekko           = "1.7.0"
   val pekkoHttp       = "1.4.0"
-  val pekkoHttpJson4s = "3.12.0"
-  val json4s          = "4.0.7"
+  val tapir           = "1.13.32"
+  val jsoniter        = "2.41.2"
   val logback         = "1.6.5"
   val slf4j           = "2.0.20"
   val scalatest       = "3.2.20"
@@ -30,7 +29,6 @@ lazy val versions = new {
 
 // client side dependencies
 libraryDependencies ++= Seq(
-  "org.webjars" % "swagger-ui"   % versions.swaggerui,
   "org.webjars" % "bootstrap"    % versions.bootstrap,
   "org.webjars" % "jquery"       % versions.jquery,
   "org.webjars" % "font-awesome" % versions.awesome
@@ -38,24 +36,25 @@ libraryDependencies ++= Seq(
 
 // server side dependencies
 libraryDependencies ++= Seq(
-  "com.github.pureconfig" %% "pureconfig-core"           % versions.pureConfig,
-  "org.json4s"            %% "json4s-jackson"            % versions.json4s,
-  "org.json4s"            %% "json4s-ext"                % versions.json4s,
-  "org.apache.pekko"      %% "pekko-actor-typed"         % versions.pekko,
-  "org.apache.pekko"      %% "pekko-http"                % versions.pekkoHttp,
-  "org.apache.pekko"      %% "pekko-http-caching"        % versions.pekkoHttp,
-  "org.apache.pekko"      %% "pekko-stream"              % versions.pekko,
-  "org.apache.pekko"      %% "pekko-slf4j"               % versions.pekko,
-  "org.apache.pekko"      %% "pekko-testkit"             % versions.pekko     % Test,
-  "org.apache.pekko"      %% "pekko-stream-testkit"      % versions.pekko     % Test,
-  "org.apache.pekko"      %% "pekko-actor-testkit-typed" % versions.pekko     % Test,
-  "org.apache.pekko"      %% "pekko-http-testkit"        % versions.pekkoHttp % Test,
-  "com.github.pjfanning"  %% "pekko-http-json4s"         % versions.pekkoHttpJson4s,
-  "org.slf4j"              % "slf4j-api"                 % versions.slf4j,
-  "ch.qos.logback"         % "logback-classic"           % versions.logback,
-  "commons-io"             % "commons-io"                % versions.commonsio,
-  "org.scalatest"         %% "scalatest"                 % versions.scalatest % Test,
-  "org.webjars"            % "webjars-locator"           % versions.webjarsLocator
+  "com.github.pureconfig"                 %% "pureconfig-core"           % versions.pureConfig,
+  "org.apache.pekko"                      %% "pekko-actor-typed"         % versions.pekko,
+  "org.apache.pekko"                      %% "pekko-http"                % versions.pekkoHttp,
+  "org.apache.pekko"                      %% "pekko-stream"              % versions.pekko,
+  "org.apache.pekko"                      %% "pekko-slf4j"               % versions.pekko,
+  "org.apache.pekko"                      %% "pekko-testkit"             % versions.pekko     % Test,
+  "org.apache.pekko"                      %% "pekko-stream-testkit"      % versions.pekko     % Test,
+  "org.apache.pekko"                      %% "pekko-actor-testkit-typed" % versions.pekko     % Test,
+  "org.apache.pekko"                      %% "pekko-http-testkit"        % versions.pekkoHttp % Test,
+  "com.softwaremill.sttp.tapir"           %% "tapir-pekko-http-server"   % versions.tapir,
+  "com.softwaremill.sttp.tapir"           %% "tapir-jsoniter-scala"      % versions.tapir,
+  "com.softwaremill.sttp.tapir"           %% "tapir-swagger-ui-bundle"   % versions.tapir,
+  "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core"       % versions.jsoniter,
+  "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-macros"     % versions.jsoniter  % "compile-internal",
+  "org.slf4j"                              % "slf4j-api"                 % versions.slf4j,
+  "ch.qos.logback"                         % "logback-classic"           % versions.logback,
+  "commons-io"                             % "commons-io"                % versions.commonsio,
+  "org.scalatest"                         %% "scalatest"                 % versions.scalatest % Test,
+  "org.webjars"                            % "webjars-locator"           % versions.webjarsLocator
 )
 
 Compile / mainClass    := Some("counters.Main")

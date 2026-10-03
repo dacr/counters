@@ -18,7 +18,6 @@ package counters
 import com.typesafe.config.ConfigFactory
 import org.slf4j.LoggerFactory
 import pureconfig.*
-import pureconfig.generic.derivation.default.*
 
 case class ApplicationConfig(
   name: String,

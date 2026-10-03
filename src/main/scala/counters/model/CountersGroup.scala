@@ -15,6 +15,12 @@
  */
 package counters.model
 
+import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
+import com.github.plokhotnyuk.jsoniter_scala.macros.JsonCodecMaker
+import counters.tools.JsonCodecs.given
+import sttp.tapir.Schema
+import sttp.tapir.Schema.annotations.description
+
 import java.util.UUID
 
 trait CountersGroupRequirements {
@@ -29,9 +35,19 @@ case class CountersGroupCreateInputs(
   origin: Option[OperationOrigin]
 ) extends CountersGroupRequirements
 
+@description("A group of counters")
 case class CountersGroup(
+  @description("Group unique identifier")
   id: UUID,
+  @description("Group name")
   name: String,
+  @description("Group description")
   description: Option[String],
+  @description("Group creation origin")
   origin: Option[OperationOrigin]
 ) extends CountersGroupRequirements
+    derives Schema
+
+object CountersGroup {
+  given JsonValueCodec[CountersGroup] = JsonCodecMaker.make
+}

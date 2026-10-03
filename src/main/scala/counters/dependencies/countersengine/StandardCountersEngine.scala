@@ -21,11 +21,8 @@ import org.apache.pekko.util.Timeout
 import org.apache.pekko.actor.typed.scaladsl.AskPattern.*
 import counters.ServiceConfig
 import counters.model.{Counter, CounterCreateInputs, CounterState, CountersGroup, CountersGroupCreateInputs, OperationOrigin, ServiceStats}
-import counters.tools.JsonImplicits
+import com.github.plokhotnyuk.jsoniter_scala.core.*
 import org.apache.commons.io.FileUtils
-import org.json4s.*
-import org.json4s.jackson.JsonMethods.parse
-import org.json4s.jackson.Serialization.write
 import org.slf4j.LoggerFactory
 
 import java.io.{File, FileFilter}
@@ -33,7 +30,7 @@ import java.time.Instant
 import java.util.UUID
 import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.concurrent.duration.*
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 
 
 trait CountersStorage {
@@ -73,7 +70,7 @@ class NopCounterStorage(config: ServiceConfig) extends CountersStorage {
 }
 
 
-class BasicCountersFileSystemStorage(config: ServiceConfig) extends CountersStorage with JsonImplicits {
+class BasicCountersFileSystemStorage(config: ServiceConfig) extends CountersStorage {
   private val logger = LoggerFactory.getLogger(getClass)
   private val storeConfig = config.counters.behavior.fileSystemStorage
   private val storeBaseDirectory = {
@@ -128,13 +125,20 @@ class BasicCountersFileSystemStorage(config: ServiceConfig) extends CountersStor
   }
 
 
-  def jsonRead(file: File): JValue = {
-    parse(FileUtils.readFileToString(file, "UTF-8"))
+  def jsonRead[T: JsonValueCodec](file: File): Option[T] = {
+    if (!file.exists()) None
+    else
+      Try(readFromArray[T](FileUtils.readFileToByteArray(file))) match {
+        case Success(value) => Some(value)
+        case Failure(err)   =>
+          logger.error(s"Unable to read $file : ${err.getMessage}")
+          None
+      }
   }
 
-  def jsonWrite(file: File, value: JValue) = {
+  def jsonWrite[T: JsonValueCodec](file: File, value: T): Boolean = {
     val tmpFile = new File(file.getParent, file.getName + ".tmp")
-    FileUtils.write(tmpFile, write(value), "UTF-8")
+    FileUtils.writeByteArrayToFile(tmpFile, writeToArray(value))
     file.delete()
     tmpFile.renameTo(file)
   }
@@ -159,45 +163,43 @@ class BasicCountersFileSystemStorage(config: ServiceConfig) extends CountersStor
   override def groupsList(): Iterable[CountersGroup] = {
     groupsUUIDs()
       .map(groupFile)
-      .map(jsonRead)
-      .flatMap(_.extractOpt[CountersGroup])
+      .flatMap(jsonRead[CountersGroup])
   }
 
   override def groupCounters(groupId: UUID): Iterable[Counter] = {
     countersUUIDs(groupId)
       .map(counterId => counterFile(groupId, counterId))
-      .map(jsonRead)
-      .flatMap(_.extractOpt[Counter])
+      .flatMap(jsonRead[Counter])
   }
 
   override def groupGet(groupId: UUID): Option[CountersGroup] = {
-    jsonRead(groupFile(groupId)).extractOpt[CountersGroup]
+    jsonRead[CountersGroup](groupFile(groupId))
   }
 
   override def counterGet(groupId: UUID, counterId: UUID): Option[Counter] = {
-    jsonRead(counterFile(groupId, counterId)).extractOpt[Counter]
+    jsonRead[Counter](counterFile(groupId, counterId))
   }
 
   override def stateGet(groupId: UUID, counterId: UUID): Option[CounterState] = {
-    jsonRead(stateFile(groupId, counterId)).extractOpt[CounterState]
+    jsonRead[CounterState](stateFile(groupId, counterId))
   }
 
   override def groupSave(group: CountersGroup): Boolean = {
     val dest = groupFile(group.id)
     if (!dest.getParentFile.exists()) dest.getParentFile.mkdirs()
-    jsonWrite(dest, Extraction.decompose(group))
+    jsonWrite(dest, group)
   }
 
   override def counterSave(counter: Counter): Boolean = {
     val dest = counterFile(counter.groupId, counter.id)
     if (!dest.getParentFile.exists()) dest.getParentFile.mkdirs()
-    jsonWrite(dest, Extraction.decompose(counter))
+    jsonWrite(dest, counter)
   }
 
   override def stateSave(state: CounterState): Boolean = {
     val dest = stateFile(state.counter.groupId, state.counter.id)
     if (!dest.getParentFile.exists()) dest.getParentFile.mkdirs()
-    jsonWrite(dest, Extraction.decompose(state))
+    jsonWrite(dest, state)
   }
 }
 

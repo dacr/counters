@@ -13,35 +13,39 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package counters
 
-import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.Directives.*
 import org.apache.pekko.http.scaladsl.server.Route
 import counters.routing.{AdminRouting, AssetsRouting, CountersRouting, HomeRouting, SwaggerRouting}
+import sttp.tapir.server.pekkohttp.PekkoHttpServerInterpreter
 
-/**
- * Prepare (reduce & prefix) service routes
- * @param dependencies
- */
+import scala.concurrent.ExecutionContext
+
+/** Prepare (interpret & prefix) service routes
+  * @param dependencies
+  */
 case class ServiceRoutes(dependencies: ServiceDependencies) {
+  private given ExecutionContext = ExecutionContext.global
+
   val config = dependencies.config.counters
 
-  private val rawRoutes: Route = List(
+  val endpoints = List(
+    SwaggerRouting(dependencies),
     CountersRouting(dependencies),
-    HomeRouting(dependencies),
     AdminRouting(dependencies),
-    AssetsRouting(dependencies),
-    SwaggerRouting(dependencies)
-  ).map(_.routes).reduce(_ ~ _)
+    HomeRouting(dependencies),
+    AssetsRouting(dependencies)
+  ).flatMap(_.endpoints)
+
+  private val rawRoutes: Route = PekkoHttpServerInterpreter().toRoute(endpoints)
 
   val routes: Route =
-    config
-      .site
-      .cleanedPrefix
+    config.site.cleanedPrefix
       .map { p =>
         pathPrefix(p) {
           rawRoutes
         }
-      }.getOrElse(rawRoutes)
+      }
+      .getOrElse(rawRoutes)
 }
