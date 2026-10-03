@@ -35,6 +35,11 @@ case class CountersGroupCreateInputs(
   origin: Option[OperationOrigin]
 ) extends CountersGroupRequirements
 
+case class GroupUpdateInputs(
+  name: String,
+  description: Option[String]
+)
+
 @description("A group of counters")
 case class CountersGroup(
   @description("Group unique identifier")

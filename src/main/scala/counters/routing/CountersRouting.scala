@@ -16,8 +16,8 @@
 package counters.routing
 
 import counters.ServiceDependencies
-import counters.api.{ApiEndpoints, ApiError, ServiceInfo}
-import counters.model.{CounterCreateInputs, CountersGroupCreateInputs}
+import counters.api.{ApiEndpoints, ApiError, CounterValue, ServiceInfo}
+import counters.model.{CounterCreateInputs, CounterUpdateInputs, CountersGroupCreateInputs, GroupUpdateInputs}
 import counters.tools.DateTimeTools
 
 import java.util.UUID
@@ -36,7 +36,8 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
     buildDate = meta.buildDateTime
   )
 
-  private val notFound = ApiError("group or counter not found")
+  private val notFound      = ApiError("group or counter not found")
+  private val groupNotFound = ApiError("group not found")
 
   private val info = ApiEndpoints.info.serverLogicSuccess[Future](_ => Future.successful(serviceInfo))
 
@@ -47,7 +48,7 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
   private val counterCreate = ApiEndpoints.counterCreate.serverLogic[Future] { (groupId, request, origin) =>
     engine
       .counterCreate(groupId, CounterCreateInputs(request.name, request.description, request.redirect, Some(origin)))
-      .map(_.toRight(ApiError("group not found")))
+      .map(_.toRight(groupNotFound))
   }
 
   private val counterState = ApiEndpoints.counterState.serverLogic[Future] { (groupId, counterId) =>
@@ -55,8 +56,56 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
   }
 
   private val counterIncrement = ApiEndpoints.counterIncrement.serverLogic[Future] { (groupId, counterId, origin) =>
+    engine
+      .counterIncrement(groupId, counterId, Some(origin))
+      .map(_.map(state => CounterValue(state.count, state.lastUpdated)).toRight(notFound))
+  }
+
+  private val counterIncrementLegacy = ApiEndpoints.counterIncrementLegacy.serverLogic[Future] { (groupId, counterId, origin) =>
     engine.counterIncrement(groupId, counterId, Some(origin)).map(_.toRight(notFound))
   }
 
-  override def endpoints = List(info, groupCreate, counterCreate, counterState, counterIncrement)
+  private val groupGet = ApiEndpoints.groupGet.serverLogic[Future] { groupId =>
+    engine.groupGet(groupId).map(_.toRight(groupNotFound))
+  }
+
+  private val groupUpdate = ApiEndpoints.groupUpdate.serverLogic[Future] { (groupId, request) =>
+    engine
+      .groupUpdate(groupId, GroupUpdateInputs(request.name, request.description))
+      .map(_.toRight(groupNotFound))
+  }
+
+  private val groupDelete = ApiEndpoints.groupDelete.serverLogic[Future] { groupId =>
+    engine.groupDelete(groupId).map(deleted => if (deleted) Right(()) else Left(groupNotFound))
+  }
+
+  private val groupCounters = ApiEndpoints.groupCounters.serverLogic[Future] { groupId =>
+    engine.groupCounters(groupId).map(_.toRight(groupNotFound))
+  }
+
+  private val counterUpdate = ApiEndpoints.counterUpdate.serverLogic[Future] { (groupId, counterId, request) =>
+    engine
+      .counterUpdate(groupId, counterId, CounterUpdateInputs(request.name, request.description, request.redirect))
+      .map(_.toRight(notFound))
+  }
+
+  private val counterDelete = ApiEndpoints.counterDelete.serverLogic[Future] { (groupId, counterId) =>
+    engine.counterDelete(groupId, counterId).map(deleted => if (deleted) Right(()) else Left(notFound))
+  }
+
+  override def endpoints =
+    List(
+      info,
+      groupCreate,
+      groupGet,
+      groupUpdate,
+      groupDelete,
+      groupCounters,
+      counterCreate,
+      counterUpdate,
+      counterDelete,
+      counterState,
+      counterIncrement,
+      counterIncrementLegacy
+    )
 }

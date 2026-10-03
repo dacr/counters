@@ -15,7 +15,7 @@
  */
 package counters.dependencies.countersengine
 
-import counters.model.{Counter, CounterCreateInputs, CounterState, CountersGroup, CountersGroupCreateInputs, OperationOrigin, ServiceStats}
+import counters.model.{Counter, CounterCreateInputs, CounterState, CounterUpdateInputs, CountersGroup, CountersGroupCreateInputs, GroupUpdateInputs, OperationOrigin, ServiceStats}
 
 import java.util.UUID
 import scala.concurrent.Future
@@ -25,12 +25,17 @@ trait CountersEngine {
   def serviceStatsGet():Future[ServiceStats]
 
   def groupCreate(inputs:CountersGroupCreateInputs):Future[CountersGroup]
+  def groupGet(groupId: UUID):Future[Option[CountersGroup]]
+  def groupUpdate(groupId: UUID, inputs: GroupUpdateInputs):Future[Option[CountersGroup]]
+  def groupDelete(groupId: UUID):Future[Boolean]
   def groupCounters(groupId: UUID):Future[Option[List[Counter]]]
   def groupStates(groupId: UUID):Future[Option[List[CounterState]]]
 
   def counterCreate(groupId:UUID, inputs:CounterCreateInputs):Future[Option[Counter]]
   def counterIncrement(groupId: UUID, counterId: UUID, origin: Option[OperationOrigin]): Future[Option[CounterState]]
   def counterGet(groupId: UUID, counterId: UUID):Future[Option[Counter]]
+  def counterUpdate(groupId: UUID, counterId: UUID, inputs: CounterUpdateInputs):Future[Option[Counter]]
+  def counterDelete(groupId: UUID, counterId: UUID):Future[Boolean]
 
   def stateGet(groupId: UUID, counterId: UUID):Future[Option[CounterState]]
 

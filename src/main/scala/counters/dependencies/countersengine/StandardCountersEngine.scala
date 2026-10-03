@@ -20,7 +20,7 @@ import org.apache.pekko.actor.typed.{ActorRef, ActorSystem, Behavior}
 import org.apache.pekko.util.Timeout
 import org.apache.pekko.actor.typed.scaladsl.AskPattern.*
 import counters.ServiceConfig
-import counters.model.{Counter, CounterCreateInputs, CounterState, CountersGroup, CountersGroupCreateInputs, OperationOrigin, ServiceStats}
+import counters.model.{Counter, CounterCreateInputs, CounterState, CounterUpdateInputs, CountersGroup, CountersGroupCreateInputs, GroupUpdateInputs, OperationOrigin, ServiceStats}
 import com.github.plokhotnyuk.jsoniter_scala.core.*
 import org.apache.commons.io.FileUtils
 import org.slf4j.LoggerFactory
@@ -49,6 +49,10 @@ trait CountersStorage {
   def counterSave(counter: Counter): Boolean
 
   def stateSave(state: CounterState): Boolean
+
+  def counterDelete(groupId: UUID, counterId: UUID): Boolean
+
+  def groupDelete(groupId: UUID): Boolean
 }
 
 class NopCounterStorage(config: ServiceConfig) extends CountersStorage {
@@ -67,6 +71,10 @@ class NopCounterStorage(config: ServiceConfig) extends CountersStorage {
   override def counterSave(counter: Counter): Boolean = true
 
   override def stateSave(state: CounterState): Boolean = true
+
+  override def counterDelete(groupId: UUID, counterId: UUID): Boolean = true
+
+  override def groupDelete(groupId: UUID): Boolean = true
 }
 
 
@@ -201,6 +209,24 @@ class BasicCountersFileSystemStorage(config: ServiceConfig) extends CountersStor
     if (!dest.getParentFile.exists()) dest.getParentFile.mkdirs()
     jsonWrite(dest, state)
   }
+
+  override def counterDelete(groupId: UUID, counterId: UUID): Boolean = {
+    Try(FileUtils.deleteDirectory(counterDirectory(groupId, counterId))) match {
+      case Success(_)   => true
+      case Failure(err) =>
+        logger.error(s"Unable to delete counter $counterId of group $groupId : ${err.getMessage}")
+        false
+    }
+  }
+
+  override def groupDelete(groupId: UUID): Boolean = {
+    Try(FileUtils.deleteDirectory(groupDirectory(groupId))) match {
+      case Success(_)   => true
+      case Failure(err) =>
+        logger.error(s"Unable to delete group $groupId : ${err.getMessage}")
+        false
+    }
+  }
 }
 
 
@@ -231,6 +257,15 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
     replyTo: ActorRef[Option[CounterState]]
   ) extends CounterCommand
 
+  case class CounterUpdateCommand(
+    inputs: CounterUpdateInputs,
+    replyTo: ActorRef[Option[Counter]]
+  ) extends CounterCommand
+
+  case class CounterGroupUpdatedCommand(
+    group: CountersGroup
+  ) extends CounterCommand
+
   def counterBehavior(group:CountersGroup, groupActor: ActorRef[GroupCommand], currentState: CounterState): Behavior[CounterCommand] =
     Behaviors.receiveMessage {
       // ---------------------------------------------------------------------
@@ -252,6 +287,25 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
       case CounterGetCommand(replyTo) =>
         replyTo ! Some(currentState.counter)
         Behaviors.same
+      // ---------------------------------------------------------------------
+      case CounterUpdateCommand(inputs, replyTo) =>
+        val newCounter = currentState.counter.copy(
+          name = inputs.name,
+          description = inputs.description,
+          redirect = inputs.redirect
+        )
+        val newState = currentState.copy(counter = newCounter)
+        storage.counterSave(newCounter)
+        storage.stateSave(newState)
+        replyTo ! Some(newCounter)
+        groupActor ! GroupCounterUpdatedStateCommand(newState)
+        counterBehavior(group, groupActor, newState)
+      // ---------------------------------------------------------------------
+      case CounterGroupUpdatedCommand(updatedGroup) =>
+        // the group is embedded within the stored state, so it must be saved again
+        val newState = currentState.copy(group = updatedGroup)
+        storage.stateSave(newState)
+        counterBehavior(updatedGroup, groupActor, newState)
     }
 
   // =================================================================================
@@ -281,6 +335,38 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
   case class GroupCounterCreateCommand(
     inputs: CounterCreateInputs,
     replyTo: ActorRef[Option[Counter]]
+  ) extends GroupCommand
+
+  case class GroupGetCommand(
+    replyTo: ActorRef[Option[CountersGroup]]
+  ) extends GroupCommand
+
+  case class GroupCountersCommand(
+    replyTo: ActorRef[Option[List[Counter]]]
+  ) extends GroupCommand
+
+  case class GroupStatesCommand(
+    replyTo: ActorRef[Option[List[CounterState]]]
+  ) extends GroupCommand
+
+  case class GroupCounterUpdateCommand(
+    counterId: UUID,
+    inputs: CounterUpdateInputs,
+    replyTo: ActorRef[Option[Counter]]
+  ) extends GroupCommand
+
+  case class GroupCounterDeleteCommand(
+    counterId: UUID,
+    replyTo: ActorRef[Boolean]
+  ) extends GroupCommand
+
+  case class GroupUpdateCommand(
+    inputs: GroupUpdateInputs,
+    replyTo: ActorRef[Option[CountersGroup]]
+  ) extends GroupCommand
+
+  case class GroupDeleteCommand(
+    replyTo: ActorRef[Boolean]
   ) extends GroupCommand
 
   def groupBehavior(counterKeeperRef: ActorRef[GuardianCounterAdded], group: CountersGroup, counters: Map[UUID, ActorRef[CounterCommand]], states: Map[UUID, CounterState]): Behavior[GroupCommand] = Behaviors.setup { context =>
@@ -325,13 +411,62 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
         val newStates = states + (counterId -> initialState)
         storage.counterSave(counter)
         storage.stateSave(initialState)
+        counterKeeperRef ! GuardianCounterAdded(1) // before replying, so that stats are up to date for the caller
         replyTo ! Some(counter)
-        counterKeeperRef ! GuardianCounterAdded(1)
         groupBehavior(counterKeeperRef, group, newCounters, newStates)
+      // ---------------------------------------------------------------------
+      case GroupCounterUpdatedStateCommand(updatedState) if !counters.contains(updatedState.counter.id) =>
+        Behaviors.same // the counter has been deleted in the meantime
       // ---------------------------------------------------------------------
       case GroupCounterUpdatedStateCommand(updatedState) =>
         val updatedStates = states + (updatedState.counter.id -> updatedState)
         groupBehavior(counterKeeperRef, group, counters, updatedStates)
+      // ---------------------------------------------------------------------
+      case GroupGetCommand(replyTo) =>
+        replyTo ! Some(group)
+        Behaviors.same
+      // ---------------------------------------------------------------------
+      case GroupCountersCommand(replyTo) =>
+        replyTo ! Some(states.values.map(_.counter).toList.sortBy(_.name))
+        Behaviors.same
+      // ---------------------------------------------------------------------
+      case GroupStatesCommand(replyTo) =>
+        replyTo ! Some(states.values.toList.sortBy(_.counter.name))
+        Behaviors.same
+      // ---------------------------------------------------------------------
+      case GroupCounterUpdateCommand(counterId, inputs, replyTo) =>
+        counters.get(counterId) match {
+          case None => replyTo ! None
+          case Some(counterActor) => counterActor ! CounterUpdateCommand(inputs, replyTo)
+        }
+        Behaviors.same
+      // ---------------------------------------------------------------------
+      case GroupCounterDeleteCommand(counterId, replyTo) =>
+        counters.get(counterId) match {
+          case None =>
+            replyTo ! false
+            Behaviors.same
+          case Some(counterActor) =>
+            context.stop(counterActor)
+            storage.counterDelete(group.id, counterId)
+            counterKeeperRef ! GuardianCounterAdded(-1) // before replying, so that stats are up to date for the caller
+            replyTo ! true
+            groupBehavior(counterKeeperRef, group, counters - counterId, states - counterId)
+        }
+      // ---------------------------------------------------------------------
+      case GroupUpdateCommand(inputs, replyTo) =>
+        val updatedGroup = group.copy(name = inputs.name, description = inputs.description)
+        storage.groupSave(updatedGroup)
+        counters.values.foreach(_ ! CounterGroupUpdatedCommand(updatedGroup))
+        val updatedStates = states.view.mapValues(_.copy(group = updatedGroup)).toMap
+        replyTo ! Some(updatedGroup)
+        groupBehavior(counterKeeperRef, updatedGroup, counters, updatedStates)
+      // ---------------------------------------------------------------------
+      case GroupDeleteCommand(replyTo) =>
+        storage.groupDelete(group.id)
+        counterKeeperRef ! GuardianCounterAdded(-counters.size) // before replying, so that stats are up to date for the caller
+        replyTo ! true
+        Behaviors.stopped // counters actors, as children, are stopped as well
       // ---------------------------------------------------------------------
       case GroupCounterIncrementCommand(counterId, operationOrigin, replyTo) =>
         counters.get(counterId) match {
@@ -402,6 +537,30 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
   case class GuardianServiceStats(
     replyTo: ActorRef[ServiceStats]) extends GuardianCommand
 
+  case class GuardianGroupGetCommand(
+    groupId: UUID,
+    replyTo: ActorRef[Option[CountersGroup]]) extends GuardianCommand
+
+  case class GuardianCounterUpdateCommand(
+    groupId: UUID,
+    counterId: UUID,
+    inputs: CounterUpdateInputs,
+    replyTo: ActorRef[Option[Counter]]) extends GuardianCommand
+
+  case class GuardianCounterDeleteCommand(
+    groupId: UUID,
+    counterId: UUID,
+    replyTo: ActorRef[Boolean]) extends GuardianCommand
+
+  case class GuardianGroupUpdateCommand(
+    groupId: UUID,
+    inputs: GroupUpdateInputs,
+    replyTo: ActorRef[Option[CountersGroup]]) extends GuardianCommand
+
+  case class GuardianGroupDeleteCommand(
+    groupId: UUID,
+    replyTo: ActorRef[Boolean]) extends GuardianCommand
+
   def guardianRunningBehavior(counterCount: Int, groups: Map[UUID, ActorRef[GroupCommand]]): Behavior[GuardianCommand] = Behaviors.setup { context =>
     Behaviors.receiveMessage {
       // ---------------------------------------------------------------------
@@ -424,11 +583,58 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
         storage.groupSave(group)
         guardianRunningBehavior(counterCount, updatedGroups)
       // ---------------------------------------------------------------------
+      case GuardianGroupGetCommand(groupId, replyTo) =>
+        groups.get(groupId) match {
+          case None => replyTo ! None
+          case Some(groupRef) => groupRef ! GroupGetCommand(replyTo)
+        }
+        Behaviors.same
+      // ---------------------------------------------------------------------
       case GuardianGroupCountersCommand(groupId, replyTo) =>
+        groups.get(groupId) match {
+          case None => replyTo ! None
+          case Some(groupRef) => groupRef ! GroupCountersCommand(replyTo)
+        }
         Behaviors.same
       // ---------------------------------------------------------------------
       case GuardianGroupStatesCommand(groupId, replyTo) =>
+        groups.get(groupId) match {
+          case None => replyTo ! None
+          case Some(groupRef) => groupRef ! GroupStatesCommand(replyTo)
+        }
         Behaviors.same
+      // ---------------------------------------------------------------------
+      case GuardianCounterUpdateCommand(groupId, counterId, inputs, replyTo) =>
+        groups.get(groupId) match {
+          case None => replyTo ! None
+          case Some(groupRef) => groupRef ! GroupCounterUpdateCommand(counterId, inputs, replyTo)
+        }
+        Behaviors.same
+      // ---------------------------------------------------------------------
+      case GuardianCounterDeleteCommand(groupId, counterId, replyTo) =>
+        groups.get(groupId) match {
+          case None => replyTo ! false
+          case Some(groupRef) => groupRef ! GroupCounterDeleteCommand(counterId, replyTo)
+        }
+        Behaviors.same
+      // ---------------------------------------------------------------------
+      case GuardianGroupUpdateCommand(groupId, inputs, replyTo) =>
+        groups.get(groupId) match {
+          case None => replyTo ! None
+          case Some(groupRef) => groupRef ! GroupUpdateCommand(inputs, replyTo)
+        }
+        Behaviors.same
+      // ---------------------------------------------------------------------
+      case GuardianGroupDeleteCommand(groupId, replyTo) =>
+        groups.get(groupId) match {
+          case None =>
+            replyTo ! false
+            Behaviors.same
+          case Some(groupRef) =>
+            // forgotten right now, so no more messages are routed to the group actor which is going to stop
+            groupRef ! GroupDeleteCommand(replyTo)
+            guardianRunningBehavior(counterCount, groups - groupId)
+        }
       // ---------------------------------------------------------------------
       case GuardianCounterCreateCommand(groupId, inputs, replyTo) =>
         groups.get(groupId) match {
@@ -498,6 +704,26 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
 
   override def groupCreate(inputs: CountersGroupCreateInputs): Future[CountersGroup] = {
     countersSystem.ask(GuardianGroupCreateCommand(inputs, _))
+  }
+
+  override def groupGet(groupId: UUID): Future[Option[CountersGroup]] = {
+    countersSystem.ask(GuardianGroupGetCommand(groupId, _))
+  }
+
+  override def groupUpdate(groupId: UUID, inputs: GroupUpdateInputs): Future[Option[CountersGroup]] = {
+    countersSystem.ask(GuardianGroupUpdateCommand(groupId, inputs, _))
+  }
+
+  override def groupDelete(groupId: UUID): Future[Boolean] = {
+    countersSystem.ask(GuardianGroupDeleteCommand(groupId, _))
+  }
+
+  override def counterUpdate(groupId: UUID, counterId: UUID, inputs: CounterUpdateInputs): Future[Option[Counter]] = {
+    countersSystem.ask(GuardianCounterUpdateCommand(groupId, counterId, inputs, _))
+  }
+
+  override def counterDelete(groupId: UUID, counterId: UUID): Future[Boolean] = {
+    countersSystem.ask(GuardianCounterDeleteCommand(groupId, counterId, _))
   }
 
   override def groupCounters(groupId: UUID): Future[Option[List[Counter]]] = {

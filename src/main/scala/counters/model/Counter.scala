@@ -38,6 +38,12 @@ case class CounterCreateInputs(
   origin: Option[OperationOrigin]
 ) extends CounterRequirements
 
+case class CounterUpdateInputs(
+  name: String,
+  description: Option[String],
+  redirect: Option[URL]
+)
+
 @description("A counter, always part of a group of counters")
 case class Counter(
   @description("Counter unique identifier")
@@ -56,5 +62,6 @@ case class Counter(
     derives Schema
 
 object Counter {
-  given JsonValueCodec[Counter] = JsonCodecMaker.make
+  given JsonValueCodec[Counter]       = JsonCodecMaker.make
+  given JsonValueCodec[List[Counter]] = JsonCodecMaker.make
 }

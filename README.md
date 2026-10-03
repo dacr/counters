@@ -24,7 +24,7 @@ COUNTER=cfcd5fa9-f4cb-4426-a2de-e2238339158e
 
 curl $API/group/$GROUP/counter/$COUNTER
 
-curl $API/increment/$GROUP/$COUNTER
+curl -X POST $API/group/$GROUP/counter/$COUNTER/increment
 
 curl $BASE/$GROUP/count/$COUNTER
 

@@ -22,7 +22,7 @@ import counters.tools.JsonCodecs.given
 import sttp.tapir.Schema.annotations.description
 
 import java.net.URL
-import java.time.OffsetDateTime
+import java.time.{Instant, OffsetDateTime}
 import java.util.UUID
 
 @description("Service health status")
@@ -87,4 +87,42 @@ case class CounterCreateRequest(
 
 object CounterCreateRequest {
   given JsonValueCodec[CounterCreateRequest] = JsonCodecMaker.make
+}
+
+@description("Counter update request, all counter editable fields are replaced")
+case class CounterUpdateRequest(
+  @description("Counter name")
+  name: String,
+  @description("Counter description, removed when not provided")
+  description: Option[String],
+  @description("Where to redirect the browser once the counter has been incremented through the count page, removed when not provided")
+  redirect: Option[URL]
+) derives Schema
+
+object CounterUpdateRequest {
+  given JsonValueCodec[CounterUpdateRequest] = JsonCodecMaker.make
+}
+
+@description("A counter current value")
+case class CounterValue(
+  @description("Current counter value")
+  count: Long,
+  @description("When the counter has been last updated")
+  lastUpdated: Instant
+) derives Schema
+
+object CounterValue {
+  given JsonValueCodec[CounterValue] = JsonCodecMaker.make
+}
+
+@description("Counters group update request, all group editable fields are replaced")
+case class GroupUpdateRequest(
+  @description("Group name")
+  name: String,
+  @description("Group description, removed when not provided")
+  description: Option[String]
+) derives Schema
+
+object GroupUpdateRequest {
+  given JsonValueCodec[GroupUpdateRequest] = JsonCodecMaker.make
 }

@@ -22,8 +22,7 @@ import sttp.tapir.json.jsoniter.*
 
 import java.util.UUID
 
-/** Documented API endpoints definitions, the OpenAPI specification is generated from them. Server logic is provided separately, see the
-  * routing package.
+/** Documented API endpoints definitions, the OpenAPI specification is generated from them. Server logic is provided separately, see the routing package.
   */
 object ApiEndpoints {
 
@@ -101,15 +100,96 @@ object ApiEndpoints {
       .out(jsonBody[CounterState].description("the counter current state"))
       .errorOut(notFound("group or counter not found"))
 
-  val counterIncrement: PublicEndpoint[(UUID, UUID, OperationOrigin), ApiError, CounterState, Any] =
+  val counterIncrement: PublicEndpoint[(UUID, UUID, OperationOrigin), ApiError, CounterValue, Any] =
     countersEndpoint
       .name("counterIncrement")
       .summary("Increment a counter")
+      .post
+      .in("group" / groupId / "counter" / counterId / "increment")
+      .in(operationOrigin)
+      .out(jsonBody[CounterValue].description("the counter value after the increment"))
+      .errorOut(notFound("group or counter not found"))
+
+  val counterIncrementLegacy: PublicEndpoint[(UUID, UUID, OperationOrigin), ApiError, CounterState, Any] =
+    countersEndpoint
+      .name("counterIncrementLegacy")
+      .summary("Increment a counter, use counterIncrement instead")
+      .deprecated()
       .get
       .in("increment" / groupId / counterId)
       .in(operationOrigin)
       .out(jsonBody[CounterState].description("the counter state after the increment"))
       .errorOut(notFound("group or counter not found"))
 
-  val all: List[AnyEndpoint] = List(info, groupCreate, counterCreate, counterState, counterIncrement, health)
+  val groupGet: PublicEndpoint[UUID, ApiError, CountersGroup, Any] =
+    countersEndpoint
+      .name("groupGet")
+      .summary("Get a group of counters information")
+      .get
+      .in("group" / groupId)
+      .out(jsonBody[CountersGroup].description("the group information"))
+      .errorOut(notFound("group not found"))
+
+  val groupUpdate: PublicEndpoint[(UUID, GroupUpdateRequest), ApiError, CountersGroup, Any] =
+    countersEndpoint
+      .name("groupUpdate")
+      .summary("Update a group of counters")
+      .put
+      .in("group" / groupId)
+      .in(jsonBody[GroupUpdateRequest].example(GroupUpdateRequest("my web site", Some("my web site pages counters"))))
+      .out(jsonBody[CountersGroup].description("the updated group"))
+      .errorOut(notFound("group not found"))
+
+  val groupDelete: PublicEndpoint[UUID, ApiError, Unit, Any] =
+    countersEndpoint
+      .name("groupDelete")
+      .summary("Delete a group of counters, with all its counters")
+      .delete
+      .in("group" / groupId)
+      .out(statusCode(StatusCode.NoContent).description("the group has been deleted"))
+      .errorOut(notFound("group not found"))
+
+  val groupCounters: PublicEndpoint[UUID, ApiError, List[Counter], Any] =
+    countersEndpoint
+      .name("groupCounters")
+      .summary("List the counters of a group, sorted by name")
+      .get
+      .in("group" / groupId / "counter")
+      .out(jsonBody[List[Counter]].description("the group counters"))
+      .errorOut(notFound("group not found"))
+
+  val counterUpdate: PublicEndpoint[(UUID, UUID, CounterUpdateRequest), ApiError, Counter, Any] =
+    countersEndpoint
+      .name("counterUpdate")
+      .summary("Update a counter, its count is kept unchanged")
+      .put
+      .in("group" / groupId / "counter" / counterId)
+      .in(jsonBody[CounterUpdateRequest].example(CounterUpdateRequest("home page", Some("home page visits"), None)))
+      .out(jsonBody[Counter].description("the updated counter"))
+      .errorOut(notFound("group or counter not found"))
+
+  val counterDelete: PublicEndpoint[(UUID, UUID), ApiError, Unit, Any] =
+    countersEndpoint
+      .name("counterDelete")
+      .summary("Delete a counter and its state")
+      .delete
+      .in("group" / groupId / "counter" / counterId)
+      .out(statusCode(StatusCode.NoContent).description("the counter has been deleted"))
+      .errorOut(notFound("group or counter not found"))
+
+  val all: List[AnyEndpoint] = List(
+    info,
+    groupCreate,
+    groupGet,
+    groupUpdate,
+    groupDelete,
+    groupCounters,
+    counterCreate,
+    counterUpdate,
+    counterDelete,
+    counterState,
+    counterIncrement,
+    counterIncrementLegacy,
+    health
+  )
 }
