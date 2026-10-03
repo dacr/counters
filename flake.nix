@@ -22,7 +22,7 @@
     packages.default = sbt.mkSbtDerivation.${system} {
       pname = "nix-counters";
       version = builtins.elemAt (builtins.match ''[^"]+"(.*)".*'' (builtins.readFile ./version.sbt)) 0;
-      depsSha256 = "sha256-j1q6nOzhZcAR66MstYVKRDghikCDojf/SSxAwhFWiCk=";
+      depsSha256 = "sha256-fQbcZgyrqYD4qAQ+EeGrAmEmPtKn4A45e26M9Ls4aak=";
 
       src = ./.;
 
