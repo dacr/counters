@@ -87,7 +87,7 @@ class ServiceTest extends AsyncWordSpec with should.Matchers with ScalatestRoute
         value.count shouldBe 1
         responseAs[String] shouldBe s"""{"count":1,"lastUpdated":${value.lastUpdated.toEpochMilli}}"""
       }
-      Get(s"/api/group/${group.id}/counter/${counter.id}") ~> routes ~> check {
+      Get(s"/api/group/${group.id}/counter/${counter.id}/state") ~> routes ~> check {
         readFromString[CounterState](responseAs[String]).count shouldBe 1
       }
       Get(s"/api/group/${group.id}/counter/${counter.id}/increment") ~> routes ~> check {
@@ -106,7 +106,7 @@ class ServiceTest extends AsyncWordSpec with should.Matchers with ScalatestRoute
         status shouldBe StatusCodes.OK
         readFromString[CountersGroup](responseAs[String]) shouldBe group.copy(name = "renamed", description = None)
       }
-      Get(s"/api/group/${group.id}/counter/${counter.id}") ~> routes ~> check {
+      Get(s"/api/group/${group.id}/counter/${counter.id}/state") ~> routes ~> check {
         readFromString[CounterState](responseAs[String]).group.name shouldBe "renamed"
       }
       Delete(s"/api/group/${group.id}") ~> routes ~> check {
@@ -115,7 +115,7 @@ class ServiceTest extends AsyncWordSpec with should.Matchers with ScalatestRoute
       Get(s"/api/group/${group.id}") ~> routes ~> check {
         status shouldBe StatusCodes.NotFound
       }
-      Get(s"/api/group/${group.id}/counter/${counter.id}") ~> routes ~> check {
+      Get(s"/api/group/${group.id}/counter/${counter.id}/state") ~> routes ~> check {
         status shouldBe StatusCodes.NotFound
       }
       Delete(s"/api/group/${group.id}") ~> routes ~> check {
@@ -153,6 +153,9 @@ class ServiceTest extends AsyncWordSpec with should.Matchers with ScalatestRoute
         readFromString[Counter](responseAs[String])
       }
       Get(s"/api/group/${group.id}/counter/${counter.id}") ~> routes ~> check {
+        readFromString[Counter](responseAs[String]) shouldBe counter
+      }
+      Get(s"/api/group/${group.id}/counter/${counter.id}/state") ~> routes ~> check {
         readFromString[CounterState](responseAs[String]).counter shouldBe counter
       }
       Put(s"/api/group/${group.id}/counter/${counter.id}", json("""{"name":"renamed","description":"updated"}""")) ~> routes ~> check {
@@ -175,11 +178,15 @@ class ServiceTest extends AsyncWordSpec with should.Matchers with ScalatestRoute
     }
     "Respond with a json error when a group or a counter is not found" in {
       val unknown = UUID.randomUUID()
+      Get(s"/api/group/$unknown/counter/$unknown/state") ~> routes ~> check {
+        status shouldBe StatusCodes.NotFound
+        readFromString[ApiError](responseAs[String]) shouldBe ApiError("group or counter not found")
+      }
       Get(s"/api/group/$unknown/counter/$unknown") ~> routes ~> check {
         status shouldBe StatusCodes.NotFound
         readFromString[ApiError](responseAs[String]) shouldBe ApiError("group or counter not found")
       }
-      Post(s"/api/group/$unknown/counter", HttpEntity(ContentTypes.`application/json`, """{"name":"x"}""")) ~> routes ~> check {
+      Post(s"/api/group/$unknown/counter",HttpEntity(ContentTypes.`application/json`, """{"name":"x"}""")) ~> routes ~> check {
         status shouldBe StatusCodes.NotFound
         readFromString[ApiError](responseAs[String]) shouldBe ApiError("group not found")
       }

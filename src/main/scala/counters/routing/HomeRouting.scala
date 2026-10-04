@@ -19,10 +19,9 @@ import counters.{ServiceDependencies, SiteConfig}
 import counters.api.ApiEndpoints
 import counters.model.ServiceStats
 import counters.templates.html.{HomeTemplate, StateTemplate}
-import sttp.model.{HeaderNames, StatusCode}
+import sttp.model.StatusCode
 import sttp.tapir.*
 
-import java.util.UUID
 import scala.concurrent.{ExecutionContext, Future}
 
 case class HomeContext(
@@ -40,7 +39,7 @@ case class StateContext(
   count: Long
 )
 
-/** Html pages, not part of the API documentation */
+/** Html pages, the count and state pages are documented within the API specification */
 case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
   private given ExecutionContext = ExecutionContext.global
 
@@ -56,11 +55,7 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
       .errorOut(statusCode(StatusCode.NotFound).and(stringBody))
 
   private val increment =
-    endpoint.get
-      .in(path[UUID]("groupId") / "count" / path[UUID]("counterId"))
-      .in(ApiEndpoints.operationOrigin)
-      .out(statusCode(StatusCode.TemporaryRedirect).and(header[String](HeaderNames.Location)))
-      .errorOut(statusCode(StatusCode.NotFound).and(stringBody))
+    ApiEndpoints.countPage
       .serverLogic[Future] { (groupId, counterId, origin) =>
         dependencies.engine.counterIncrement(groupId, counterId, Some(origin)).map {
           case Some(state) =>
@@ -70,10 +65,10 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
                 val separator = if (url.contains("?")) "&" else "?"
                 val query     = s"count=${state.count}&groupId=$groupId&counterId=$counterId&stateId=${state.id}"
                 Right(s"$url$separator$query")
-              case None => // no redirect configured, so going back to the default counter state page
+              case None           => // no redirect configured, so going back to the default counter state page
                 Right(s"${site.baseURL}/$groupId/state/$counterId")
             }
-          case None =>
+          case None        =>
             Left(notFoundMessage)
         }
       }
@@ -86,8 +81,8 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
   }
 
   private val state =
-    pageEndpoint
-      .in(path[UUID]("groupId") / "state" / path[UUID]("counterId"))
+    ApiEndpoints.statePage
+      .out(header(Routing.noClientCacheHeader))
       .serverLogic[Future] { (groupId, counterId) =>
         dependencies.engine.stateGet(groupId, counterId).map {
           case None        => Left(notFoundMessage)

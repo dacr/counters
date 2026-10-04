@@ -81,7 +81,9 @@ case class CounterCreateRequest(
   name: String,
   @description("Counter description")
   description: Option[String],
-  @description("Where to redirect the browser once the counter has been incremented through the count page")
+  @description(
+    "URL where the count page GET /{groupId}/count/{counterId} redirects the browser after each increment, with the count, groupId, counterId and stateId query parameters appended. Without it the browser is redirected to the counter state page. Not used by the API increment endpoint."
+  )
   redirect: Option[URL]
 ) derives Schema
 
@@ -95,7 +97,9 @@ case class CounterUpdateRequest(
   name: String,
   @description("Counter description, removed when not provided")
   description: Option[String],
-  @description("Where to redirect the browser once the counter has been incremented through the count page, removed when not provided")
+  @description(
+    "URL where the count page GET /{groupId}/count/{counterId} redirects the browser after each increment, with the count, groupId, counterId and stateId query parameters appended. Without it the browser is redirected to the counter state page. Not used by the API increment endpoint. Removed when not provided."
+  )
   redirect: Option[URL]
 ) derives Schema
 

@@ -19,6 +19,7 @@ import counters.ServiceDependencies
 import counters.api.ApiEndpoints
 import io.circe.Printer
 import io.circe.syntax.*
+import sttp.apispec.Tag
 import sttp.apispec.openapi.{Contact, Info, License, OpenAPI}
 import sttp.apispec.openapi.circe.*
 import sttp.apispec.openapi.circe.yaml.*
@@ -40,13 +41,14 @@ case class SwaggerRouting(dependencies: ServiceDependencies) extends Routing {
         Info(
           title = s"${config.application.name} API",
           version = config.metaInfo.version,
-          description = Some("counters service"),
+          description = Some(ApiEndpoints.description),
           termsOfService = Some(s"${site.baseURL}/txt/TERMS-OF-SERVICE.txt"),
           contact = Some(Contact(email = Some(config.metaInfo.contact), url = Some(config.metaInfo.projectURL))),
           license = Some(License("Apache 2.0", Some(s"${site.baseURL}/txt/LICENSE-2.0.txt")))
         )
       )
       .addServer(site.baseURL)
+      .tags(ApiEndpoints.Tags.descriptions.map((name, description) => Tag(name, Some(description))))
 
   private val swaggerUIEndpoints =
     SwaggerUI[Future](openAPI.toYaml, SwaggerUIOptions.default.pathPrefix(List("swagger")))

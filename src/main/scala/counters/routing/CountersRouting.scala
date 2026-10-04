@@ -51,6 +51,10 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
       .map(_.toRight(groupNotFound))
   }
 
+  private val counterGet = ApiEndpoints.counterGet.serverLogic[Future] { (groupId, counterId) =>
+    engine.counterGet(groupId, counterId).map(_.toRight(notFound))
+  }
+
   private val counterState = ApiEndpoints.counterState.serverLogic[Future] { (groupId, counterId) =>
     engine.stateGet(groupId, counterId).map(_.toRight(notFound))
   }
@@ -102,6 +106,7 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
       groupDelete,
       groupCounters,
       counterCreate,
+      counterGet,
       counterUpdate,
       counterDelete,
       counterState,
