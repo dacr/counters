@@ -4,3 +4,5 @@ target/
 null/
 counters-data/
 result
+.envrc
+.direnv/
