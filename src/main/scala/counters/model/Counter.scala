@@ -28,6 +28,7 @@ trait CounterRequirements {
   def name: String
   def description: Option[String]
   def redirect: Option[URL]
+  def publicIncrement: Boolean
   def origin: Option[OperationOrigin]
 }
 
@@ -35,13 +36,15 @@ case class CounterCreateInputs(
   name: String,
   description: Option[String],
   redirect: Option[URL],
+  publicIncrement: Boolean,
   origin: Option[OperationOrigin]
 ) extends CounterRequirements
 
 case class CounterUpdateInputs(
   name: String,
   description: Option[String],
-  redirect: Option[URL]
+  redirect: Option[URL],
+  publicIncrement: Boolean
 )
 
 @description("A counter, always part of a group of counters")
@@ -54,12 +57,15 @@ case class Counter(
   name: String,
   @description("Counter description")
   description: Option[String],
-  @description("URL where the count page GET /{groupId}/count/{counterId} redirects the browser after each increment, with the count, groupId, counterId and stateId query parameters appended. Without it the browser is redirected to the counter state page. Not used by the API increment endpoint.")
+  @description(
+    "URL where the count page GET /{groupId}/count/{counterId} redirects the browser after each increment, with the count, groupId, counterId and stateId query parameters appended. Without it the browser is redirected to the counter state page. Not used by the API increment endpoint."
+  )
   redirect: Option[URL],
+  @description("When true the API increment endpoint can be used without any API token, the count page is always public")
+  publicIncrement: Boolean,
   @description("Counter creation origin")
   origin: Option[OperationOrigin]
-) extends CounterRequirements
-    derives Schema
+) extends CounterRequirements derives Schema
 
 object Counter {
   given JsonValueCodec[Counter]       = JsonCodecMaker.make

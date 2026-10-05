@@ -18,7 +18,7 @@ package counters.routing
 import counters.{ServiceDependencies, SiteConfig}
 import counters.api.ApiEndpoints
 import counters.model.ServiceStats
-import counters.templates.html.{HomeTemplate, StateTemplate}
+import counters.templates.html.{HomeTemplate, StateTemplate, ValidationTemplate}
 import sttp.model.StatusCode
 import sttp.tapir.*
 
@@ -37,6 +37,13 @@ case class StateContext(
   counterDescription: String,
   lastUpdated: String,
   count: Long
+)
+
+case class ValidationContext(
+  context: PageContext,
+  title: String,
+  message: String,
+  confirmCode: Option[String] // when given, a confirmation button is shown
 )
 
 /** Html pages, the count and state pages are documented within the API specification */
@@ -113,5 +120,27 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
         }
       }
 
-  override def endpoints = List(increment, state, home)
+  private def validationPage(title: String, message: String, confirmCode: Option[String] = None): String =
+    ValidationTemplate.render(ValidationContext(pageContext, title, message, confirmCode)).toString
+
+  private val emailValidationPage =
+    ApiEndpoints.emailValidationPage
+      .out(header(Routing.noClientCacheHeader))
+      .serverLogicSuccess[Future] { code =>
+        Future.successful(validationPage("Email validation", "Please confirm your email address to activate your account.", Some(code)))
+      }
+
+  private val emailValidation =
+    ApiEndpoints.emailValidation
+      .out(header(Routing.noClientCacheHeader))
+      .serverLogicSuccess[Future] { code =>
+        dependencies.engine.userEmailValidate(code).map {
+          case Some(user) =>
+            validationPage("Email validated", s"Thank you ${user.name}, your email address has been validated, your API token can now be used.")
+          case None       =>
+            validationPage("Email validation failed", "This validation link is invalid, has expired, or has already been used.")
+        }
+      }
+
+  override def endpoints = List(increment, state, emailValidationPage, emailValidation, home)
 }

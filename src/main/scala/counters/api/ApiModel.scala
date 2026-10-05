@@ -17,6 +17,7 @@ package counters.api
 
 import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
 import com.github.plokhotnyuk.jsoniter_scala.macros.{CodecMakerConfig, JsonCodecMaker}
+import sttp.model.StatusCode
 import sttp.tapir.Schema
 import counters.tools.JsonCodecs.given
 import sttp.tapir.Schema.annotations.description
@@ -63,6 +64,40 @@ object ApiError {
   given JsonValueCodec[ApiError] = JsonCodecMaker.make
 }
 
+/** An error with its HTTP status, the status is not part of the response body */
+case class ApiFailure(status: StatusCode, error: ApiError)
+
+object ApiFailure {
+  def notFound(message: String): ApiFailure     = ApiFailure(StatusCode.NotFound, ApiError(message))
+  def unauthorized(message: String): ApiFailure = ApiFailure(StatusCode.Unauthorized, ApiError(message))
+  def conflict(message: String): ApiFailure     = ApiFailure(StatusCode.Conflict, ApiError(message))
+  def forbidden(message: String): ApiFailure    = ApiFailure(StatusCode.Forbidden, ApiError(message))
+  def badRequest(message: String): ApiFailure   = ApiFailure(StatusCode.BadRequest, ApiError(message))
+  def unavailable(message: String): ApiFailure  = ApiFailure(StatusCode.ServiceUnavailable, ApiError(message))
+}
+
+@description("User registration request")
+case class UserRegisterRequest(
+  @description("User name")
+  name: String,
+  @description("User email address, a validation link is sent to it, the API token can't be used until the link has been followed")
+  email: String
+) derives Schema
+
+object UserRegisterRequest {
+  given JsonValueCodec[UserRegisterRequest] = JsonCodecMaker.make
+}
+
+@description("A new user API token")
+case class UserToken(
+  @description("The user API token, to be sent as a bearer token : Authorization: Bearer <token>")
+  token: String
+) derives Schema
+
+object UserToken {
+  given JsonValueCodec[UserToken] = JsonCodecMaker.make
+}
+
 @description("Counters group creation request")
 case class GroupCreateRequest(
   @description("Group name")
@@ -84,7 +119,9 @@ case class CounterCreateRequest(
   @description(
     "URL where the count page GET /{groupId}/count/{counterId} redirects the browser after each increment, with the count, groupId, counterId and stateId query parameters appended. Without it the browser is redirected to the counter state page. Not used by the API increment endpoint."
   )
-  redirect: Option[URL]
+  redirect: Option[URL],
+  @description("When true the API increment endpoint can be used without any API token, false by default")
+  publicIncrement: Option[Boolean]
 ) derives Schema
 
 object CounterCreateRequest {
@@ -100,7 +137,9 @@ case class CounterUpdateRequest(
   @description(
     "URL where the count page GET /{groupId}/count/{counterId} redirects the browser after each increment, with the count, groupId, counterId and stateId query parameters appended. Without it the browser is redirected to the counter state page. Not used by the API increment endpoint. Removed when not provided."
   )
-  redirect: Option[URL]
+  redirect: Option[URL],
+  @description("When true the API increment endpoint can be used without any API token, false when not provided")
+  publicIncrement: Option[Boolean]
 ) derives Schema
 
 object CounterUpdateRequest {

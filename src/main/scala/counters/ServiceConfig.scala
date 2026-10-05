@@ -19,6 +19,8 @@ import com.typesafe.config.ConfigFactory
 import org.slf4j.LoggerFactory
 import pureconfig.*
 
+import scala.concurrent.duration.*
+
 case class ApplicationConfig(
   name: String,
   code: String,
@@ -36,7 +38,7 @@ case class SiteConfig(
   val cleanedPrefix = prefix.map(_.trim.replaceAll("/+$", "")).filter(_.size > 0)
   val cleanedURL = url.trim.replaceAll("/+$", "")
   val absolutePrefix = cleanedPrefix.map(p => s"/$p").getOrElse("")
-  val baseURL = url + absolutePrefix
+  val baseURL = cleanedURL + absolutePrefix
   val apiURL = baseURL + "/api"
   val swaggerUserInterfaceURL = s"$baseURL/swagger"
   val swaggerURL = s"$baseURL/swagger/swagger.json"
@@ -52,6 +54,21 @@ case class FileSystemStorageConfig(
 
 case class Behavior(
   fileSystemStorage: FileSystemStorageConfig,
+  emailValidationDelay: FiniteDuration = 48.hours
+) derives ConfigReader
+
+case class SmtpConfig(
+  host: Option[String],
+  port: Int,
+  tls: String,
+  username: Option[String],
+  password: Option[String]
+) derives ConfigReader
+
+case class MailConfig(
+  from: String,
+  replyTo: Option[String],
+  smtp: SmtpConfig
 ) derives ConfigReader
 
 // Automatically populated by the build process from a generated config file
@@ -76,6 +93,7 @@ case class CountersConfig(
   site:SiteConfig,
   content:Content,
   behavior: Behavior,
+  mail: MailConfig,
   metaInfo: CountersMetaConfig
 )
 

@@ -22,28 +22,21 @@ import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.description
 
 import java.time.Instant
+import java.util.UUID
 
-@description("Who and when an operation has been done")
-case class OperationOrigin(
-  @description("When the operation has been done")
+@description("A counter increment, with its origin")
+case class CounterHistoryEntry(
+  @description("Identifier of the counter state created by this increment")
+  stateId: UUID,
+  @description("Counter value after the increment")
+  count: Long,
+  @description("When the increment has been done")
   timestamp: Instant,
-  @description("Client IP address")
-  ipAddress: Option[String],
-  @description("Client user agent")
-  userAgent: Option[String],
-  @description("Page from which the request has been sent, as given by the Referer header")
-  referer: Option[String]
+  @description("Increment origin")
+  origin: Option[OperationOrigin]
 ) derives Schema
 
-object OperationOrigin {
-  given JsonValueCodec[OperationOrigin] = JsonCodecMaker.make
-
-  def apply(ipAddress: Option[String], userAgent: Option[String], referer: Option[String]): OperationOrigin = {
-    OperationOrigin(
-      timestamp = Instant.now(),
-      ipAddress = ipAddress,
-      userAgent = userAgent,
-      referer = referer
-    )
-  }
+object CounterHistoryEntry {
+  given JsonValueCodec[CounterHistoryEntry]       = JsonCodecMaker.make
+  given JsonValueCodec[List[CounterHistoryEntry]] = JsonCodecMaker.make
 }

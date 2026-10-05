@@ -44,15 +44,17 @@ case class GroupUpdateInputs(
 case class CountersGroup(
   @description("Group unique identifier")
   id: UUID,
+  @description("Unique identifier of the user who owns this group")
+  ownerId: UUID,
   @description("Group name")
   name: String,
   @description("Group description")
   description: Option[String],
   @description("Group creation origin")
   origin: Option[OperationOrigin]
-) extends CountersGroupRequirements
-    derives Schema
+) extends CountersGroupRequirements derives Schema
 
 object CountersGroup {
-  given JsonValueCodec[CountersGroup] = JsonCodecMaker.make
+  given JsonValueCodec[CountersGroup]       = JsonCodecMaker.make
+  given JsonValueCodec[List[CountersGroup]] = JsonCodecMaker.make
 }

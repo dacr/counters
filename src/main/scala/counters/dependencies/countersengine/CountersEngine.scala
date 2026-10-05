@@ -15,29 +15,51 @@
  */
 package counters.dependencies.countersengine
 
-import counters.model.{Counter, CounterCreateInputs, CounterState, CounterUpdateInputs, CountersGroup, CountersGroupCreateInputs, GroupUpdateInputs, OperationOrigin, ServiceStats}
+import counters.model.*
 
 import java.util.UUID
 import scala.concurrent.Future
 
+enum GroupDeleteOutcome {
+  case Deleted, NotFound, DefaultGroup
+}
+
+/** Groups and counters operations are scoped to their owner, an unknown or not owned group or counter is reported as not found. Only the counter increment and the counter state, used by the public
+  * pages, are not scoped.
+  */
 trait CountersEngine {
 
-  def serviceStatsGet():Future[ServiceStats]
+  def serviceStatsGet(): Future[ServiceStats]
 
-  def groupCreate(inputs:CountersGroupCreateInputs):Future[CountersGroup]
-  def groupGet(groupId: UUID):Future[Option[CountersGroup]]
-  def groupUpdate(groupId: UUID, inputs: GroupUpdateInputs):Future[Option[CountersGroup]]
-  def groupDelete(groupId: UUID):Future[Boolean]
-  def groupCounters(groupId: UUID):Future[Option[List[Counter]]]
-  def groupStates(groupId: UUID):Future[Option[List[CounterState]]]
+  /** None when the email is already used by another user */
+  def userRegister(inputs: UserCreateInputs): Future[Option[UserRegistered]]
+  /** None when the code is unknown or expired */
+  def userEmailValidate(validationCode: String): Future[Option[User]]
+  def userAuthenticate(token: String): Future[Option[User]]
+  def userGet(userId: UUID): Future[Option[User]]
+  def userTokenRenew(userId: UUID): Future[Option[String]]
+  def userDelete(userId: UUID): Future[Boolean]
+  def userGroups(userId: UUID): Future[Option[List[CountersGroup]]]
 
-  def counterCreate(groupId:UUID, inputs:CounterCreateInputs):Future[Option[Counter]]
+  def groupCreate(ownerId: UUID, inputs: CountersGroupCreateInputs): Future[Option[CountersGroup]]
+  def groupGet(ownerId: UUID, groupId: UUID): Future[Option[CountersGroup]]
+  def groupUpdate(ownerId: UUID, groupId: UUID, inputs: GroupUpdateInputs): Future[Option[CountersGroup]]
+  def groupDelete(ownerId: UUID, groupId: UUID): Future[GroupDeleteOutcome]
+  def groupCounters(ownerId: UUID, groupId: UUID): Future[Option[List[Counter]]]
+  def groupStates(ownerId: UUID, groupId: UUID): Future[Option[List[CounterState]]]
+
+  def counterCreate(ownerId: UUID, groupId: UUID, inputs: CounterCreateInputs): Future[Option[Counter]]
+  def counterGet(ownerId: UUID, groupId: UUID, counterId: UUID): Future[Option[Counter]]
+  def counterUpdate(ownerId: UUID, groupId: UUID, counterId: UUID, inputs: CounterUpdateInputs): Future[Option[Counter]]
+  def counterDelete(ownerId: UUID, groupId: UUID, counterId: UUID): Future[Boolean]
+  def counterState(ownerId: UUID, groupId: UUID, counterId: UUID): Future[Option[CounterState]]
+  def counterHistory(ownerId: UUID, groupId: UUID, counterId: UUID, limit: Int): Future[Option[List[CounterHistoryEntry]]]
+
+  /** Not scoped, any one knowing the group and counter identifiers can increment the counter */
   def counterIncrement(groupId: UUID, counterId: UUID, origin: Option[OperationOrigin]): Future[Option[CounterState]]
-  def counterGet(groupId: UUID, counterId: UUID):Future[Option[Counter]]
-  def counterUpdate(groupId: UUID, counterId: UUID, inputs: CounterUpdateInputs):Future[Option[Counter]]
-  def counterDelete(groupId: UUID, counterId: UUID):Future[Boolean]
 
-  def stateGet(groupId: UUID, counterId: UUID):Future[Option[CounterState]]
+  /** Not scoped, any one knowing the group and counter identifiers can get the counter state */
+  def stateGet(groupId: UUID, counterId: UUID): Future[Option[CounterState]]
 
-  def shutdown():Future[Boolean]
+  def shutdown(): Future[Boolean]
 }

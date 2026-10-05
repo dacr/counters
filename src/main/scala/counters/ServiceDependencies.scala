@@ -16,16 +16,19 @@
 package counters
 
 import counters.dependencies.countersengine.{CountersEngine, StandardCountersEngine}
+import counters.dependencies.mailer.Mailer
 
 class ServiceDependencies(
   val config: ServiceConfig,
-  val engine: CountersEngine
+  val engine: CountersEngine,
+  val mailer: Mailer
 )
 
 object ServiceDependencies {
   def defaults: ServiceDependencies = {
     val chosenConfig = ServiceConfig()
     val chosenCountersEngine = StandardCountersEngine(chosenConfig)
-    new ServiceDependencies(chosenConfig, chosenCountersEngine)
+    val chosenMailer = Mailer(chosenConfig.counters.mail)
+    new ServiceDependencies(chosenConfig, chosenCountersEngine, chosenMailer)
   }
 }

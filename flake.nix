@@ -22,7 +22,7 @@
     packages.default = sbt.mkSbtDerivation.${system} {
       pname = "nix-counters";
       version = builtins.elemAt (builtins.match ''[^"]+"(.*)".*'' (builtins.readFile ./version.sbt)) 0;
-      depsSha256 = "sha256-6HvgmurFDDQLzW1MKS0JxlGfX7KIY9LmTK178pZyN3U=";
+      depsSha256 = "sha256-NUpHtfX8RH1Rc3JiS20JPMDGYTCCSvVBNrKv2LcX1lQ=";
 
       src = ./.;
 
@@ -79,6 +79,41 @@
             description = "where counters stores its data";
             default = "/tmp/counters-cache-data";
           };
+          mailFrom = lib.mkOption {
+            type = lib.types.str;
+            description = "Sender of the emails sent by counters, such as the registration email validation";
+            default = "counters@localhost";
+          };
+          mailReplyTo = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            description = "Reply-To of the emails sent by counters";
+            default = null;
+          };
+          smtpHost = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            description = "SMTP server, without it emails are not sent but only logged";
+            default = null;
+          };
+          smtpPort = lib.mkOption {
+            type = lib.types.int;
+            description = "SMTP server port";
+            default = 465;
+          };
+          smtpTls = lib.mkOption {
+            type = lib.types.enum [ "implicit" "starttls" "none" ];
+            description = "implicit (TLS from the first byte, usually port 465), starttls (usually port 587) or none";
+            default = "implicit";
+          };
+          smtpUsername = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            description = "SMTP authentication user name";
+            default = null;
+          };
+          environmentFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.path;
+            description = "Environment file for secrets, COUNTERS_SMTP_PASSWORD, kept out of the nix store";
+            default = null;
+          };
         };
       };
       config = lib.mkIf config.services.counters.enable {
@@ -93,11 +128,22 @@
             COUNTERS_PREFIX      = config.services.counters.prefix;
             COUNTERS_URL         = config.services.counters.url;
             COUNTERS_STORE_PATH  = config.services.counters.datastore;
+            COUNTERS_MAIL_FROM   = config.services.counters.mailFrom;
+            COUNTERS_SMTP_PORT   = (toString config.services.counters.smtpPort);
+            COUNTERS_SMTP_TLS    = config.services.counters.smtpTls;
+          } // lib.optionalAttrs (config.services.counters.mailReplyTo != null) {
+            COUNTERS_MAIL_REPLY_TO = config.services.counters.mailReplyTo;
+          } // lib.optionalAttrs (config.services.counters.smtpHost != null) {
+            COUNTERS_SMTP_HOST = config.services.counters.smtpHost;
+          } // lib.optionalAttrs (config.services.counters.smtpUsername != null) {
+            COUNTERS_SMTP_USERNAME = config.services.counters.smtpUsername;
           };
           serviceConfig = {
             ExecStart = "${self.packages.${pkgs.system}.default}/bin/nix-counters";
             User = config.services.counters.user;
             Restart = "on-failure";
+          } // lib.optionalAttrs (config.services.counters.environmentFile != null) {
+            EnvironmentFile = config.services.counters.environmentFile;
           };
           wantedBy = [ "multi-user.target" ];
         };

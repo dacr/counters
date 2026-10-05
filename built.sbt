@@ -25,6 +25,7 @@ lazy val versions = new {
   val scalatest       = "3.2.20"
   val commonsio       = "2.22.0"
   val webjarsLocator  = "0.52"
+  val angusMail       = "2.0.5"
 }
 
 // client side dependencies
@@ -53,6 +54,7 @@ libraryDependencies ++= Seq(
   "org.slf4j"                              % "slf4j-api"                 % versions.slf4j,
   "ch.qos.logback"                         % "logback-classic"           % versions.logback,
   "commons-io"                             % "commons-io"                % versions.commonsio,
+  "org.eclipse.angus"                      % "angus-mail"                % versions.angusMail,
   "org.scalatest"                         %% "scalatest"                 % versions.scalatest % Test,
   "org.webjars"                            % "webjars-locator"           % versions.webjarsLocator
 )
