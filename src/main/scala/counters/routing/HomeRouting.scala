@@ -151,13 +151,17 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
       .out(header(Routing.noClientCacheHeader))
       .serverLogicSuccess[Future] { code =>
         engine.userEmailValidationPrepare(code).flatMap {
-          case None          => Future.successful(validationFailed)
+          case None          =>
+            logger.info("Email validation refused, unknown, expired or already used code")
+            Future.successful(validationFailed)
           case Some(request) =>
             mailer
               .send(emails.approvalRequest(request))
               .flatMap { _ =>
                 engine.userEmailValidate(code).map {
-                  case None       => validationFailed
+                  case None       =>
+                    logger.warn(s"User ${request.user.id} approval request sent, but its email validation code is no longer valid")
+                    validationFailed
                   case Some(user) =>
                     page(
                       "Email validated",
@@ -174,7 +178,7 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
       }
 
   private def userDetails(user: User): List[(String, String)] = {
-    val origin = user.origin
+    val origin          = user.origin
     List(
       "Name"          -> user.name,
       "Email"         -> user.email,
@@ -194,7 +198,9 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
       .out(header(Routing.noClientCacheHeader))
       .serverLogicSuccess[Future] { code =>
         engine.userApprovalGet(code).map {
-          case None       => approvalUnknown
+          case None       =>
+            logger.info("Approval page refused, unknown or already processed code")
+            approvalUnknown
           case Some(user) =>
             val path = s"/user/approve?code=${encoded(code)}"
             page(
@@ -212,7 +218,9 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
       .serverLogicSuccess[Future] {
         case (code, "approve") =>
           engine.userApprove(code).flatMap {
-            case None       => Future.successful(approvalUnknown)
+            case None       =>
+              logger.info("Approval refused, unknown or already processed code")
+              Future.successful(approvalUnknown)
             case Some(user) =>
               mailer
                 .send(emails.approved(user))
@@ -224,7 +232,9 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
           }
         case (code, _)         =>
           engine.userReject(code).map {
-            case None       => approvalUnknown
+            case None       =>
+              logger.info("Rejection refused, unknown or already processed code")
+              approvalUnknown
             case Some(user) => page("Registration rejected", s"${user.name} <${user.email}> registration has been rejected and dropped.")
           }
       }

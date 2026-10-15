@@ -30,6 +30,7 @@ case class Email(
 )
 
 trait Mailer {
+
   /** Fails when the email couldn't be handed over to the mail server */
   def send(email: Email): Future[Unit]
 }
@@ -55,14 +56,14 @@ class LogMailer extends Mailer {
 }
 
 class SmtpMailer(config: MailConfig, host: String) extends Mailer {
-  private val logger = LoggerFactory.getLogger(getClass)
-  private val smtp   = config.smtp
+  private val logger             = LoggerFactory.getLogger(getClass)
+  private val smtp               = config.smtp
   // sending is blocking, so kept away from the main execution contexts
   private given ExecutionContext = ExecutionContext.fromExecutor(java.util.concurrent.Executors.newFixedThreadPool(2))
 
   private val session = {
-    val properties = new Properties()
-    val timeout    = "10000"
+    val properties    = new Properties()
+    val timeout       = "10000"
     properties.put("mail.smtp.host", host)
     properties.put("mail.smtp.port", smtp.port.toString)
     properties.put("mail.smtp.connectiontimeout", timeout)
@@ -99,7 +100,14 @@ class SmtpMailer(config: MailConfig, host: String) extends Mailer {
       message.setSubject(email.subject, "UTF-8")
       message.setText(email.body, "UTF-8")
       message.setSentDate(new Date())
-      Transport.send(message)
+      try {
+        Transport.send(message)
+        logger.info(s"Email sent to ${email.to} : ${email.subject}")
+      } catch {
+        case error: Exception =>
+          logger.warn(s"Unable to send email to ${email.to} : ${email.subject}", error)
+          throw error
+      }
     }
   }
 }

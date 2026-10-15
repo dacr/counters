@@ -666,28 +666,29 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
   def guardianRunningBehavior(state: GuardianState): Behavior[GuardianCommand] = Behaviors.setup { context =>
     Behaviors.receiveMessage {
       // ---------------------------------------------------------------------
-      case GuardianSetupCommand                                             => // Ignore already done
+      case GuardianSetupCommand                                               => // Ignore already done
         Behaviors.same
       // ---------------------------------------------------------------------
-      case GuardianStopCommand                                              =>
+      case GuardianStopCommand                                                =>
         Behaviors.stopped
       // ---------------------------------------------------------------------
-      case GuardianCounterAdded(counterAddedCount)                          =>
+      case GuardianCounterAdded(counterAddedCount)                            =>
         guardianRunningBehavior(state.copy(counterCount = state.counterCount + counterAddedCount))
       // ---------------------------------------------------------------------
-      case GuardianServiceStats(replyTo)                                    =>
+      case GuardianServiceStats(replyTo)                                      =>
         replyTo ! ServiceStats(state.users.size, state.groups.size, state.counterCount)
         Behaviors.same
       // ---------------------------------------------------------------------
-      case GuardianPurgeCommand                                             =>
+      case GuardianPurgeCommand                                               =>
         guardianRunningBehavior(purgeExpiredRegistrations(context, state, Instant.now()))
       // ---------------------------------------------------------------------
-      case GuardianUserRegisterCommand(inputs, replyTo)                     =>
+      case GuardianUserRegisterCommand(inputs, replyTo)                       =>
         val now    = Instant.now()
         // an expired registration must not keep its email address
         val purged = purgeExpiredRegistrations(context, state, now)
         val email  = inputs.email.trim.toLowerCase
         if (purged.users.values.exists(_.user.email == email)) {
+          logger.info(s"Registration refused, the email address <$email> is already used")
           replyTo ! None
           guardianRunningBehavior(purged)
         } else {
@@ -701,6 +702,7 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
           storage.userSave(account)
           storage.groupSave(group)
           val groupRef  = spawnGroup(context, group)
+          logger.info(s"User $userId registered as ${inputs.name} <$email>, its email must be validated before $expiresOn")
           replyTo ! Some(UserRegistered(UserRegistration(user, group, token), code, expiresOn))
           guardianRunningBehavior(
             purged.copy(
@@ -721,11 +723,12 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
             val approvalCode = ApiTokens.generate()
             val prepared     = account.copy(approvalCodeHash = Some(ApiTokens.hash(approvalCode)))
             val newState     = state.userUpdated(prepared)
+            logger.info(s"User ${account.user.id} email validation requested, approval request prepared")
             replyTo ! Some(UserApprovalRequest(prepared.user, approvalCode))
             guardianRunningBehavior(newState)
         }
       // ---------------------------------------------------------------------
-      case GuardianUserEmailValidateCommand(validationCode, replyTo)        =>
+      case GuardianUserEmailValidateCommand(validationCode, replyTo)          =>
         state.userByValidationCode(validationCode, Instant.now()) match {
           case None          =>
             replyTo ! None
@@ -733,15 +736,16 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
           case Some(account) =>
             val validated = account.copy(user = account.user.copy(emailValidated = true), validationCodeHash = None, validationExpiresOn = None)
             val newState  = state.userUpdated(validated)
+            logger.info(s"User ${account.user.id} email <${account.user.email}> validated, waiting for an administrator approval")
             replyTo ! Some(validated.user)
             guardianRunningBehavior(newState)
         }
       // ---------------------------------------------------------------------
-      case GuardianUserApprovalGetCommand(approvalCode, replyTo)            =>
+      case GuardianUserApprovalGetCommand(approvalCode, replyTo)              =>
         replyTo ! state.userByApprovalCode(approvalCode).map(_.user)
         Behaviors.same
       // ---------------------------------------------------------------------
-      case GuardianUserApproveCommand(approvalCode, replyTo)                =>
+      case GuardianUserApproveCommand(approvalCode, replyTo)                  =>
         state.userByApprovalCode(approvalCode) match {
           case None          =>
             replyTo ! None
@@ -749,11 +753,12 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
           case Some(account) =>
             val approved = account.copy(user = account.user.copy(approved = true), approvalCodeHash = None)
             val newState = state.userUpdated(approved)
+            logger.info(s"User ${account.user.id} <${account.user.email}> approved by the approver")
             replyTo ! Some(approved.user)
             guardianRunningBehavior(newState)
         }
       // ---------------------------------------------------------------------
-      case GuardianUserRejectCommand(approvalCode, replyTo)                 =>
+      case GuardianUserRejectCommand(approvalCode, replyTo)                   =>
         state.userByApprovalCode(approvalCode) match {
           case None          =>
             replyTo ! None
@@ -765,15 +770,15 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
             guardianRunningBehavior(newState)
         }
       // ---------------------------------------------------------------------
-      case GuardianUserAuthenticateCommand(token, replyTo)                  =>
+      case GuardianUserAuthenticateCommand(token, replyTo)                    =>
         replyTo ! state.tokens.get(ApiTokens.hash(token)).flatMap(state.users.get).map(_.user)
         Behaviors.same
       // ---------------------------------------------------------------------
-      case GuardianUserGetCommand(userId, replyTo)                          =>
+      case GuardianUserGetCommand(userId, replyTo)                            =>
         replyTo ! state.users.get(userId).map(_.user)
         Behaviors.same
       // ---------------------------------------------------------------------
-      case GuardianUserTokenRenewCommand(userId, replyTo)                   =>
+      case GuardianUserTokenRenewCommand(userId, replyTo)                     =>
         state.users.get(userId) match {
           case None          =>
             replyTo ! None
@@ -782,6 +787,7 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
             val token   = ApiTokens.generate()
             val renewed = account.copy(tokenHash = ApiTokens.hash(token))
             storage.userSave(renewed)
+            logger.info(s"User $userId API token renewed")
             replyTo ! Some(token)
             guardianRunningBehavior(
               state.copy(
@@ -791,18 +797,19 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
             )
         }
       // ---------------------------------------------------------------------
-      case GuardianUserGroupsCommand(userId, replyTo)                       =>
+      case GuardianUserGroupsCommand(userId, replyTo)                         =>
         if (!state.users.contains(userId)) replyTo ! None
         else replyTo ! Some(state.userGroupsIds(userId).map(state.groups(_).ref))
         Behaviors.same
       // ---------------------------------------------------------------------
-      case GuardianUserRemoveCommand(userId, replyTo)                       =>
+      case GuardianUserRemoveCommand(userId, replyTo)                         =>
         state.users.get(userId) match {
           case None          =>
             replyTo ! None
             Behaviors.same
           case Some(account) =>
             val groupsIds = state.userGroupsIds(userId)
+            logger.info(s"User $userId <${account.user.email}> deleted with its ${groupsIds.size} group(s)")
             storage.userDelete(userId)
             replyTo ! Some(groupsIds.map(state.groups(_).ref))
             guardianRunningBehavior(
@@ -814,7 +821,7 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
             )
         }
       // ---------------------------------------------------------------------
-      case GuardianGroupCreateCommand(ownerId, inputs, replyTo)             =>
+      case GuardianGroupCreateCommand(ownerId, inputs, replyTo)               =>
         if (!state.users.contains(ownerId)) {
           replyTo ! None
           Behaviors.same
@@ -826,7 +833,7 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
           guardianRunningBehavior(state.copy(groups = state.groups + (group.id -> GroupEntry(ownerId, groupRef))))
         }
       // ---------------------------------------------------------------------
-      case GuardianGroupRemoveCommand(ownerId, groupId, replyTo)            =>
+      case GuardianGroupRemoveCommand(ownerId, groupId, replyTo)              =>
         state.groups.get(groupId).filter(_.ownerId == ownerId) match {
           case None                                                                         =>
             replyTo ! Left(GroupDeleteOutcome.NotFound)
@@ -840,7 +847,7 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
             guardianRunningBehavior(state.copy(groups = state.groups - groupId))
         }
       // ---------------------------------------------------------------------
-      case GuardianGroupForwardCommand(ownerId, groupId, command, notFound) =>
+      case GuardianGroupForwardCommand(ownerId, groupId, command, notFound)   =>
         state.groups.get(groupId).filter(entry => ownerId.forall(_ == entry.ownerId)) match {
           case None        => notFound()
           case Some(entry) => entry.ref ! command
@@ -853,24 +860,24 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
     Behaviors.withTimers { timers =>
       Behaviors.setup { context =>
         Behaviors.receiveMessage {
-        case GuardianStopCommand  =>
-          Behaviors.stopped
-        case GuardianSetupCommand =>
-          val users            = storage.usersList().map(account => account.user.id -> account).toMap
-          val (owned, orphans) = storage.groupsList().partition(group => users.contains(group.ownerId))
-          orphans.foreach(group => logger.warn(s"Ignoring group ${group.id} as its owner ${group.ownerId} is unknown"))
-          val groups           =
-            owned.map { group =>
-              val groupActorRef = spawnGroup(context, group)
-              groupActorRef ! GroupRestoreCommand
-              group.id -> GroupEntry(group.ownerId, groupActorRef)
-            }.toMap
-          val tokens           = users.values.map(account => account.tokenHash -> account.user.id).toMap
-          timers.startTimerWithFixedDelay(GuardianPurgeCommand, 1.hour)
-          guardianRunningBehavior(purgeExpiredRegistrations(context, GuardianState(0, users, tokens, groups), Instant.now()))
-        case x                    => // Any other messages are ignored until the setup is received
-          logger.warn(s"Can't process any standard messages until setup is done, received $x")
-          Behaviors.same
+          case GuardianStopCommand  =>
+            Behaviors.stopped
+          case GuardianSetupCommand =>
+            val users            = storage.usersList().map(account => account.user.id -> account).toMap
+            val (owned, orphans) = storage.groupsList().partition(group => users.contains(group.ownerId))
+            orphans.foreach(group => logger.warn(s"Ignoring group ${group.id} as its owner ${group.ownerId} is unknown"))
+            val groups           =
+              owned.map { group =>
+                val groupActorRef = spawnGroup(context, group)
+                groupActorRef ! GroupRestoreCommand
+                group.id -> GroupEntry(group.ownerId, groupActorRef)
+              }.toMap
+            val tokens           = users.values.map(account => account.tokenHash -> account.user.id).toMap
+            timers.startTimerWithFixedDelay(GuardianPurgeCommand, 1.hour)
+            guardianRunningBehavior(purgeExpiredRegistrations(context, GuardianState(0, users, tokens, groups), Instant.now()))
+          case x                    => // Any other messages are ignored until the setup is received
+            logger.warn(s"Can't process any standard messages until setup is done, received $x")
+            Behaviors.same
         }
       }
     }
