@@ -84,6 +84,11 @@
             description = "Sender of the emails sent by counters, such as the registration email validation";
             default = "counters@localhost";
           };
+          mailApprover = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            description = "Who receives the registrations approval requests, the mailFrom address when not set";
+            default = null;
+          };
           mailReplyTo = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             description = "Reply-To of the emails sent by counters";
@@ -131,6 +136,8 @@
             COUNTERS_MAIL_FROM   = config.services.counters.mailFrom;
             COUNTERS_SMTP_PORT   = (toString config.services.counters.smtpPort);
             COUNTERS_SMTP_TLS    = config.services.counters.smtpTls;
+          } // lib.optionalAttrs (config.services.counters.mailApprover != null) {
+            COUNTERS_MAIL_APPROVER = config.services.counters.mailApprover;
           } // lib.optionalAttrs (config.services.counters.mailReplyTo != null) {
             COUNTERS_MAIL_REPLY_TO = config.services.counters.mailReplyTo;
           } // lib.optionalAttrs (config.services.counters.smtpHost != null) {

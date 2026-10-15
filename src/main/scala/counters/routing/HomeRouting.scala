@@ -17,7 +17,8 @@ package counters.routing
 
 import counters.{ServiceDependencies, SiteConfig}
 import counters.api.ApiEndpoints
-import counters.model.ServiceStats
+import counters.model.{ServiceStats, User}
+import org.slf4j.LoggerFactory
 import counters.templates.html.{HomeTemplate, StateTemplate, ValidationTemplate}
 import sttp.model.StatusCode
 import sttp.tapir.*
@@ -39,11 +40,15 @@ case class StateContext(
   count: Long
 )
 
+/** A button posting to the given path, relative to the site base */
+case class PageAction(label: String, path: String, style: String)
+
 case class ValidationContext(
   context: PageContext,
   title: String,
   message: String,
-  confirmCode: Option[String] // when given, a confirmation button is shown
+  details: List[(String, String)],
+  actions: List[PageAction]
 )
 
 /** Html pages, the count and state pages are documented within the API specification */
@@ -52,6 +57,11 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
 
   val site: SiteConfig         = dependencies.config.counters.site
   val pageContext: PageContext = PageContext(dependencies.config.counters)
+
+  private val logger = LoggerFactory.getLogger(getClass)
+  private val engine = dependencies.engine
+  private val mailer = dependencies.mailer
+  private val emails = UserEmails(dependencies.config.counters)
 
   private val notFoundMessage = "group or counter not found"
 
@@ -120,27 +130,104 @@ case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
         }
       }
 
-  private def validationPage(title: String, message: String, confirmCode: Option[String] = None): String =
-    ValidationTemplate.render(ValidationContext(pageContext, title, message, confirmCode)).toString
+  private def page(title: String, message: String, details: List[(String, String)] = Nil, actions: List[PageAction] = Nil): String =
+    ValidationTemplate.render(ValidationContext(pageContext, title, message, details, actions)).toString
+
+  private def encoded(code: String): String = java.net.URLEncoder.encode(code, "UTF-8")
 
   private val emailValidationPage =
     ApiEndpoints.emailValidationPage
       .out(header(Routing.noClientCacheHeader))
       .serverLogicSuccess[Future] { code =>
-        Future.successful(validationPage("Email validation", "Please confirm your email address to activate your account.", Some(code)))
+        val confirm = PageAction("Confirm my email address", s"/user/validate?code=${encoded(code)}", "primary")
+        Future.successful(page("Email validation", "Please confirm your email address to activate your account.", actions = List(confirm)))
       }
 
+  private val validationFailed = page("Email validation failed", "This validation link is invalid, has expired, or has already been used.")
+
+  /** The email is only validated once the approval request has been sent, otherwise the user can try again with the same link */
   private val emailValidation =
     ApiEndpoints.emailValidation
       .out(header(Routing.noClientCacheHeader))
       .serverLogicSuccess[Future] { code =>
-        dependencies.engine.userEmailValidate(code).map {
-          case Some(user) =>
-            validationPage("Email validated", s"Thank you ${user.name}, your email address has been validated, your API token can now be used.")
-          case None       =>
-            validationPage("Email validation failed", "This validation link is invalid, has expired, or has already been used.")
+        engine.userEmailValidationPrepare(code).flatMap {
+          case None          => Future.successful(validationFailed)
+          case Some(request) =>
+            mailer
+              .send(emails.approvalRequest(request))
+              .flatMap { _ =>
+                engine.userEmailValidate(code).map {
+                  case None       => validationFailed
+                  case Some(user) =>
+                    page(
+                      "Email validated",
+                      s"Thank you ${user.name}, your email address has been validated. Your registration is now waiting for an " +
+                        "administrator approval, you'll receive an email once approved, your API token can be used from then on."
+                    )
+                }
+              }
+              .recover { error =>
+                logger.error(s"Unable to send the approval request of user ${request.user.id} : ${error.getMessage}")
+                page("Email validation failed", "Your email address couldn't be validated right now, please try again later with the same link.")
+              }
         }
       }
 
-  override def endpoints = List(increment, state, emailValidationPage, emailValidation, home)
+  private def userDetails(user: User): List[(String, String)] = {
+    val origin = user.origin
+    List(
+      "Name"          -> user.name,
+      "Email"         -> user.email,
+      "Email status"  -> (if (user.emailValidated) "validated" else "not validated yet"),
+      "User id"       -> user.id.toString,
+      "Registered on" -> origin.map(_.timestamp.toString).getOrElse("unknown"),
+      "IP address"    -> origin.flatMap(_.ipAddress).getOrElse("unknown"),
+      "User agent"    -> origin.flatMap(_.userAgent).getOrElse("unknown"),
+      "Referer"       -> origin.flatMap(_.referer).getOrElse("none")
+    )
+  }
+
+  private val approvalUnknown = page("Registration approval", "This approval link is invalid, or the registration has already been approved or rejected.")
+
+  private val userApprovalPage =
+    ApiEndpoints.userApprovalPage
+      .out(header(Routing.noClientCacheHeader))
+      .serverLogicSuccess[Future] { code =>
+        engine.userApprovalGet(code).map {
+          case None       => approvalUnknown
+          case Some(user) =>
+            val path = s"/user/approve?code=${encoded(code)}"
+            page(
+              "Registration approval",
+              "Approve this registration to let the user use its API token, or reject it to drop it with its groups.",
+              userDetails(user),
+              List(PageAction("Approve", s"$path&decision=approve", "success"), PageAction("Reject", s"$path&decision=reject", "danger"))
+            )
+        }
+      }
+
+  private val userApproval =
+    ApiEndpoints.userApproval
+      .out(header(Routing.noClientCacheHeader))
+      .serverLogicSuccess[Future] {
+        case (code, "approve") =>
+          engine.userApprove(code).flatMap {
+            case None       => Future.successful(approvalUnknown)
+            case Some(user) =>
+              mailer
+                .send(emails.approved(user))
+                .map(_ => page("Registration approved", s"${user.name} <${user.email}> has been approved and notified by email."))
+                .recover { error =>
+                  logger.error(s"Unable to notify user ${user.id} of its approval : ${error.getMessage}")
+                  page("Registration approved", s"${user.name} <${user.email}> has been approved, but couldn't be notified by email.")
+                }
+          }
+        case (code, _)         =>
+          engine.userReject(code).map {
+            case None       => approvalUnknown
+            case Some(user) => page("Registration rejected", s"${user.name} <${user.email}> registration has been rejected and dropped.")
+          }
+      }
+
+  override def endpoints = List(increment, state, emailValidationPage, emailValidation, userApprovalPage, userApproval, home)
 }

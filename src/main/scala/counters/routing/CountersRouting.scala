@@ -18,13 +18,10 @@ package counters.routing
 import counters.ServiceDependencies
 import counters.api.{ApiEndpoints, ApiFailure, CounterValue, ServiceInfo, UserToken}
 import counters.dependencies.countersengine.GroupDeleteOutcome
-import counters.dependencies.mailer.Email
 import counters.model.*
 import counters.tools.DateTimeTools
 import org.slf4j.LoggerFactory
 
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 import java.util.UUID
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -35,7 +32,7 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
   private val engine = dependencies.engine
   private val mailer = dependencies.mailer
   private val meta   = dependencies.config.counters.metaInfo
-  private val site   = dependencies.config.counters.site
+  private val emails = UserEmails(dependencies.config.counters)
 
   private val serviceInfo = ServiceInfo(
     instanceUUID = UUID.randomUUID(),
@@ -46,6 +43,7 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
 
   private val unauthorized         = ApiFailure.unauthorized("missing or invalid API token")
   private val notValidated         = ApiFailure.forbidden("the user email address has not been validated yet, follow the link sent to it")
+  private val notApproved          = ApiFailure.forbidden("the user registration is waiting for an administrator approval, an email is sent once approved")
   private val notPublicIncrement   = ApiFailure.unauthorized("an API token is required to increment this counter")
   private val notFound             = ApiFailure.notFound("group or counter not found")
   private val groupNotFound        = ApiFailure.notFound("group not found")
@@ -55,6 +53,7 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
     engine.userAuthenticate(token).map {
       case None                              => Left(unauthorized)
       case Some(user) if !user.emailValidated => Left(notValidated)
+      case Some(user) if !user.approved       => Left(notApproved)
       case Some(user)                        => Right(user)
     }
 
@@ -74,29 +73,6 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
     else None
   }
 
-  private def validationEmail(registered: UserRegistered): Email = {
-    val user      = registered.registration.user
-    val link      = s"${site.baseURL}/user/validate?code=${registered.validationCode}"
-    val expiresOn = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneOffset.UTC).format(registered.validationExpiresOn)
-    Email(
-      to = user.email,
-      subject = "Counters - confirm your email address",
-      body = s"""Hello ${user.name},
-                |
-                |Thank you for registering to Counters, ${site.baseURL}
-                |
-                |To activate your account, open the link below and confirm your email address :
-                |$link
-                |
-                |This link expires on $expiresOn UTC, your API token can't be used until then.
-                |If you didn't register, just ignore this email, the registration will be dropped.
-                |
-                |--
-                |Counters
-                |""".stripMargin
-    )
-  }
-
   /** The registration is cancelled when the validation email can't be sent, otherwise the email address would stay blocked */
   private val userRegister = ApiEndpoints.userRegister.serverLogic[Future] { (request, origin) =>
     registerInputsCheck(request.name, request.email) match {
@@ -107,7 +83,7 @@ case class CountersRouting(dependencies: ServiceDependencies) extends Routing wi
           case Some(registered) =>
             val userId = registered.registration.user.id
             mailer
-              .send(validationEmail(registered))
+              .send(emails.validation(registered))
               .map(_ => Right(registered.registration))
               .recoverWith { error =>
                 logger.error(s"Unable to send the validation email of user $userId, registration cancelled : ${error.getMessage}")

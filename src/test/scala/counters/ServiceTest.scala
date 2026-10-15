@@ -70,11 +70,21 @@ class ServiceTest extends AsyncWordSpec with should.Matchers with ScalatestRoute
       responseAs[String] should include("Email validated")
     }
 
-  /** Registers a user and validates its email */
+  val approver = fsConfig.counters.mail.approver
+
+  /** Approves the registration whose approval request has been sent last */
+  def approveLast(): Unit =
+    Post(s"/user/approve?code=${mailer.validationCode(approver)}&decision=approve") ~> routes ~> check {
+      status shouldBe StatusCodes.OK
+      responseAs[String] should include("has been approved")
+    }
+
+  /** Registers a user, validates its email and approves it */
   def register(name: String): UserRegistration = {
     val registration = registerOnly(name, uniqueEmail(name))
     validateEmail(registration.user.email)
-    registration.copy(user = registration.user.copy(emailValidated = true))
+    approveLast()
+    registration.copy(user = registration.user.copy(emailValidated = true, approved = true))
   }
 
   def groupCreate(token: String, name: String): CountersGroup =
@@ -146,7 +156,31 @@ class ServiceTest extends AsyncWordSpec with should.Matchers with ScalatestRoute
         responseAs[String] should include("Email validation failed")
       }
       Get("/api/user/me").as(registration.token) ~> routes ~> check {
-        readFromString[User](responseAs[String]) shouldBe registration.user.copy(emailValidated = true)
+        status shouldBe StatusCodes.Forbidden
+        readFromString[ApiError](responseAs[String]).message should include("waiting for an administrator approval")
+      }
+      // the approver receives all the registration information
+      val approvalRequest = mailer.sentTo(approver).last
+      approvalRequest.subject should include(email)
+      approvalRequest.body should include(registration.user.id.toString)
+      approvalRequest.body should include("10.1.2.3")
+      approvalRequest.body should include("test-agent")
+      val approvalCode = mailer.validationCode(approver)
+      // the approval link only leads to a page showing the registration
+      Get(s"/user/approve?code=$approvalCode") ~> routes ~> check {
+        status shouldBe StatusCodes.OK
+        responseAs[String] should (include(email) and include("Approve") and include("Reject"))
+      }
+      Get("/api/user/me").as(registration.token) ~> routes ~> check {
+        status shouldBe StatusCodes.Forbidden
+      }
+      approveLast()
+      mailer.sentTo(email).last.subject should include("approved")
+      Post(s"/user/approve?code=$approvalCode&decision=approve") ~> routes ~> check {
+        responseAs[String] should include("invalid")
+      }
+      Get("/api/user/me").as(registration.token) ~> routes ~> check {
+        readFromString[User](responseAs[String]) shouldBe registration.user.copy(emailValidated = true, approved = true)
       }
       Get("/api/group").as(registration.token) ~> routes ~> check {
         readFromString[List[CountersGroup]](responseAs[String]) shouldBe List(registration.defaultGroup)
@@ -180,6 +214,36 @@ class ServiceTest extends AsyncWordSpec with should.Matchers with ScalatestRoute
       Post("/api/user", json(s"""{"name":"other","email":"${email.toUpperCase}"}""")) ~> routes ~> check {
         status shouldBe StatusCodes.Conflict
         readFromString[ApiError](responseAs[String]) shouldBe ApiError("email address already used")
+      }
+    }
+    "Drop rejected registrations" in {
+      val email        = uniqueEmail("spammer")
+      val registration = registerOnly("spammer", email)
+      validateEmail(email)
+      Post(s"/user/approve?code=${mailer.validationCode(approver)}&decision=reject") ~> routes ~> check {
+        responseAs[String] should include("rejected")
+      }
+      Get("/api/user/me").as(registration.token) ~> routes ~> check {
+        status shouldBe StatusCodes.Unauthorized
+      }
+      Post(s"/user/approve?code=${mailer.validationCode(approver)}&decision=whatever") ~> routes ~> check {
+        status shouldBe StatusCodes.BadRequest
+      }
+    }
+    "Keep the email validation retryable when the approval request can't be sent" in {
+      val email        = uniqueEmail("john")
+      val registration = registerOnly("john", email)
+      val code         = mailer.validationCode(email)
+      val failingRoutes = ServiceRoutes(new ServiceDependencies(fsConfig, engine, new TestMailer(failing = true))).routes
+      Post(s"/user/validate?code=$code") ~> failingRoutes ~> check {
+        responseAs[String] should include("try again later")
+      }
+      Get("/api/user/me").as(registration.token) ~> routes ~> check {
+        readFromString[ApiError](responseAs[String]).message should include("not been validated")
+      }
+      validateEmail(email) // same link, once the mail server is back
+      Get("/api/user/me").as(registration.token) ~> routes ~> check {
+        readFromString[ApiError](responseAs[String]).message should include("waiting for an administrator approval")
       }
     }
     "Cancel the registration when the validation email can't be sent" in {

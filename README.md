@@ -1,6 +1,7 @@
 # ![](images/logo-base-64.png) Counters ![tests][tests-workflow] [![License][licenseImg]][licenseLink] [![][CountersImg]][CountersLnk]
 Just count whatever you want. Three steps to create a counter :
-1. Register, you get an API token and a default group
+1. Register, you get an API token and a default group. The token becomes usable once you have confirmed
+   your email address, through the link sent to it, and an administrator has then approved your registration
 2. Optionally create other counters groups, each user only sees its own groups
 3. Create your counter, its increments history is kept
 
@@ -16,7 +17,7 @@ BASE=http://127.0.0.1:8080
 API=$BASE/api
 
 curl -d '{"name":"john","email":"john@example.com"}' -H "Content-Type: application/json" $API/user
-# follow the validation link sent by email, the token can't be used before
+# follow the validation link sent by email, then wait for the approval email, the token can't be used before
 # extract the token and the default group ID from the response, the token is given only once
 TOKEN=uHU-cpiDtiu58ilpCtW95KvFA-kaSdmBY1K4DjXaewQ
 GROUP=d5d6a0be-7ba7-41cc-aa37-beb7d957bfa0
@@ -65,6 +66,7 @@ scala-cli --dep fr.janalyse::counters:1.0.6 -e 'counters.Main.main(args)'
 | COUNTERS_EMAIL_VALIDATION_DELAY | How long a registration waits for its email validation              | 48h                     |
 | COUNTERS_MAIL_FROM              | Sender of the emails, such as the registration validation           | "counters@localhost"    |
 | COUNTERS_MAIL_REPLY_TO          | Reply-To of the emails                                              |                         |
+| COUNTERS_MAIL_APPROVER          | Who receives the registrations approval requests                    | COUNTERS_MAIL_FROM      |
 | COUNTERS_SMTP_HOST              | SMTP server, without it emails are only logged (development)        |                         |
 | COUNTERS_SMTP_PORT              | SMTP server port                                                    | 465                     |
 | COUNTERS_SMTP_TLS               | implicit (usually port 465), starttls (usually port 587) or none    | "implicit"              |

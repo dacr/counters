@@ -33,8 +33,18 @@ trait CountersEngine {
 
   /** None when the email is already used by another user */
   def userRegister(inputs: UserCreateInputs): Future[Option[UserRegistered]]
-  /** None when the code is unknown or expired */
+  /** First step of the email validation, gives the approval code to send to the approver, the validation code is not consumed
+    * yet so that the user can try again when the approval request couldn't be sent. None when the code is unknown or expired.
+    */
+  def userEmailValidationPrepare(validationCode: String): Future[Option[UserApprovalRequest]]
+  /** Second step of the email validation, once the approval request has been sent. None when the code is unknown or expired */
   def userEmailValidate(validationCode: String): Future[Option[User]]
+  /** The user waiting for this approval code, None when the code is unknown */
+  def userApprovalGet(approvalCode: String): Future[Option[User]]
+  /** None when the approval code is unknown */
+  def userApprove(approvalCode: String): Future[Option[User]]
+  /** The registration is dropped with its groups. None when the approval code is unknown */
+  def userReject(approvalCode: String): Future[Option[User]]
   def userAuthenticate(token: String): Future[Option[User]]
   def userGet(userId: UUID): Future[Option[User]]
   def userTokenRenew(userId: UUID): Future[Option[String]]

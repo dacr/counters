@@ -16,7 +16,7 @@
 package counters.model
 
 import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
-import com.github.plokhotnyuk.jsoniter_scala.macros.JsonCodecMaker
+import com.github.plokhotnyuk.jsoniter_scala.macros.{CodecMakerConfig, JsonCodecMaker}
 import counters.tools.JsonCodecs.given
 import sttp.tapir.Schema
 import sttp.tapir.Schema.annotations.description
@@ -40,6 +40,8 @@ case class User(
   email: String,
   @description("False until the email address has been validated, the API token can't be used before")
   emailValidated: Boolean,
+  @description("False until an administrator has approved the registration, the API token can't be used before")
+  approved: Boolean = true, // users registered before approvals existed are approved
   @description("The group created on registration, it can't be deleted")
   defaultGroupId: UUID,
   @description("User registration origin")
@@ -47,19 +49,20 @@ case class User(
 ) derives Schema
 
 object User {
-  given JsonValueCodec[User] = JsonCodecMaker.make
+  given JsonValueCodec[User] = JsonCodecMaker.make(CodecMakerConfig.withTransientDefault(false))
 }
 
-/** A user as stored, the API token and the email validation code are never stored, only their hashes */
+/** A user as stored, the API token, the email validation and approval codes are never stored, only their hashes */
 case class UserAccount(
   user: User,
   tokenHash: String,
   validationCodeHash: Option[String],
-  validationExpiresOn: Option[Instant]
+  validationExpiresOn: Option[Instant],
+  approvalCodeHash: Option[String] = None
 )
 
 object UserAccount {
-  given JsonValueCodec[UserAccount] = JsonCodecMaker.make
+  given JsonValueCodec[UserAccount] = JsonCodecMaker.make(CodecMakerConfig.withTransientDefault(false))
 }
 
 @description("A newly registered user")
@@ -81,4 +84,10 @@ case class UserRegistered(
   registration: UserRegistration,
   validationCode: String,
   validationExpiresOn: Instant
+)
+
+/** An email validation waiting for the approval request to be sent, the approval code is only known here */
+case class UserApprovalRequest(
+  user: User,
+  approvalCode: String
 )

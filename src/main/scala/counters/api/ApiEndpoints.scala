@@ -30,8 +30,9 @@ object ApiEndpoints {
     """Count anything : web pages visits, downloads, events...
       |
       |Register first with `POST /api/user`, the response contains your API token, given only once, and your default group.
-      |A validation link is emailed to you, the API token can only be used once this link has been followed and confirmed,
-      |unvalidated registrations are dropped after a while.
+      |A validation link is emailed to you, follow it and confirm, unvalidated registrations are dropped after a while.
+      |Your registration is then sent to an administrator for approval, you are notified by email once approved.
+      |The API token can only be used once both steps are done.
       |The token must be sent with every other API call as a bearer token : `Authorization: Bearer <token>`.
       |A lost token can be replaced, using the current one, with `POST /api/user/me/token`.
       |
@@ -87,7 +88,7 @@ object ApiEndpoints {
   private val apiTokenDescription = "User API token, as given on registration"
 
   private val unauthorized    = StatusCode.Unauthorized -> "missing or invalid API token"
-  private val notValidated    = StatusCode.Forbidden    -> "the user email address has not been validated yet"
+  private val notValidated    = StatusCode.Forbidden    -> "the user email address has not been validated, or the registration has not been approved, yet"
   private val groupNotFound   = StatusCode.NotFound     -> "group not found"
   private val counterNotFound = StatusCode.NotFound     -> "group or counter not found"
 
@@ -136,7 +137,8 @@ object ApiEndpoints {
       .summary("Register a new user")
       .description(
         "A default group, which can't be deleted, is created for the new user. The returned API token is never given again, " +
-          "and can only be used once the email address has been validated, by following the link sent to it."
+          "and can only be used once the email address has been validated, by following the link sent to it, and once the " +
+          "registration has then been approved by an administrator."
       )
       .post
       .in(jsonBody[UserRegisterRequest].example(UserRegisterRequest("john", "john@example.com")))
@@ -385,11 +387,41 @@ object ApiEndpoints {
     pagesEndpoint
       .name("emailValidation")
       .summary("Validate an email address")
-      .description("Sent by the validation page confirmation button. Once validated, the user API token can be used.")
+      .description("Sent by the validation page confirmation button. Once validated, the registration is sent to the approver.")
       .post
       .in("user" / "validate")
       .in(validationCode)
       .out(htmlBodyUtf8.description("html page telling whether the email address has been validated, or why not"))
+
+
+  private val approvalCode = query[String]("code").description("Approval code, as given in the approval link sent to the approver")
+
+  val userApprovalPage: PublicEndpoint[String, Unit, String, Any] =
+    pagesEndpoint
+      .name("userApprovalPage")
+      .summary("Registration approval page")
+      .description(
+        "The page the approval link, emailed to the approver, leads to. It shows the registration and asks to approve or " +
+          "reject it, it decides nothing on its own."
+      )
+      .get
+      .in("user" / "approve")
+      .in(approvalCode)
+      .out(htmlBodyUtf8.description("html page showing the registration, with approve and reject buttons"))
+
+  val userApproval: PublicEndpoint[(String, String), Unit, String, Any] =
+    pagesEndpoint
+      .name("userApproval")
+      .summary("Approve or reject a registration")
+      .description(
+        "Sent by the approval page buttons. An approved user is notified by email and can then use its API token, " +
+          "a rejected registration is dropped with its groups."
+      )
+      .post
+      .in("user" / "approve")
+      .in(approvalCode)
+      .in(query[String]("decision").description("approve or reject").validate(Validator.enumeration(List("approve", "reject"))))
+      .out(htmlBodyUtf8.description("html page telling what has been done"))
 
   // -------------------------------------------------------------------------------------------------------------------
 
@@ -415,6 +447,8 @@ object ApiEndpoints {
     statePage,
     emailValidationPage,
     emailValidation,
+    userApprovalPage,
+    userApproval,
     info,
     health
   )

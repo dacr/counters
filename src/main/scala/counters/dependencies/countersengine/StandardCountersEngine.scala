@@ -578,7 +578,15 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
 
   case class GuardianUserRegisterCommand(inputs: UserCreateInputs, replyTo: ActorRef[Option[UserRegistered]]) extends GuardianCommand
 
+  case class GuardianUserEmailValidationPrepareCommand(validationCode: String, replyTo: ActorRef[Option[UserApprovalRequest]]) extends GuardianCommand
+
   case class GuardianUserEmailValidateCommand(validationCode: String, replyTo: ActorRef[Option[User]]) extends GuardianCommand
+
+  case class GuardianUserApprovalGetCommand(approvalCode: String, replyTo: ActorRef[Option[User]]) extends GuardianCommand
+
+  case class GuardianUserApproveCommand(approvalCode: String, replyTo: ActorRef[Option[User]]) extends GuardianCommand
+
+  case class GuardianUserRejectCommand(approvalCode: String, replyTo: ActorRef[Option[User]]) extends GuardianCommand
 
   case class GuardianUserAuthenticateCommand(token: String, replyTo: ActorRef[Option[User]]) extends GuardianCommand
 
@@ -609,6 +617,35 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
     groups: Map[UUID, GroupEntry]
   ) {
     def userGroupsIds(userId: UUID): List[UUID] = groups.collect { case (groupId, entry) if entry.ownerId == userId => groupId }.toList
+
+    /** Unexpired email validation code */
+    def userByValidationCode(validationCode: String, now: Instant): Option[UserAccount] = {
+      val codeHash = ApiTokens.hash(validationCode)
+      users.values.find(account => account.validationCodeHash.contains(codeHash) && account.validationExpiresOn.exists(_.isAfter(now)))
+    }
+
+    def userByApprovalCode(approvalCode: String): Option[UserAccount] = {
+      val codeHash = ApiTokens.hash(approvalCode)
+      users.values.find(_.approvalCodeHash.contains(codeHash))
+    }
+
+    def userUpdated(account: UserAccount): GuardianState = {
+      storage.userSave(account)
+      copy(users = users + (account.user.id -> account))
+    }
+  }
+
+  /** Drops the user and its groups, without waiting for the groups deletion */
+  def userDrop(context: ActorContext[GuardianCommand], state: GuardianState, account: UserAccount): GuardianState = {
+    val userId    = account.user.id
+    val groupsIds = state.userGroupsIds(userId)
+    groupsIds.foreach(groupId => state.groups(groupId).ref ! GroupDeleteCommand(context.system.ignoreRef))
+    storage.userDelete(userId)
+    state.copy(
+      users = state.users - userId,
+      tokens = state.tokens - account.tokenHash,
+      groups = state.groups -- groupsIds
+    )
   }
 
   def spawnGroup(context: ActorContext[GuardianCommand], group: CountersGroup): ActorRef[GroupCommand] = {
@@ -621,16 +658,8 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
   def purgeExpiredRegistrations(context: ActorContext[GuardianCommand], state: GuardianState, now: Instant): GuardianState = {
     val expired = state.users.values.filter(_.validationExpiresOn.exists(_.isBefore(now))).toList
     expired.foldLeft(state) { (current, account) =>
-      val userId    = account.user.id
-      val groupsIds = current.userGroupsIds(userId)
-      logger.info(s"Dropping user $userId registration, its email has not been validated in time")
-      groupsIds.foreach(groupId => current.groups(groupId).ref ! GroupDeleteCommand(context.system.ignoreRef))
-      storage.userDelete(userId)
-      current.copy(
-        users = current.users - userId,
-        tokens = current.tokens - account.tokenHash,
-        groups = current.groups -- groupsIds
-      )
+      logger.info(s"Dropping user ${account.user.id} registration, its email has not been validated in time")
+      userDrop(context, current, account)
     }
   }
 
@@ -664,7 +693,7 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
         } else {
           val userId    = UUID.randomUUID()
           val group     = CountersGroup(id = UUID.randomUUID(), ownerId = userId, name = "default", description = Some("default group"), origin = inputs.origin)
-          val user      = User(id = userId, name = inputs.name, email = email, emailValidated = false, defaultGroupId = group.id, origin = inputs.origin)
+          val user      = User(id = userId, name = inputs.name, email = email, emailValidated = false, approved = false, defaultGroupId = group.id, origin = inputs.origin)
           val token     = ApiTokens.generate()
           val code      = ApiTokens.generate()
           val expiresOn = now.plusMillis(emailValidationDelay.toMillis)
@@ -682,18 +711,58 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
           )
         }
       // ---------------------------------------------------------------------
+      case GuardianUserEmailValidationPrepareCommand(validationCode, replyTo) =>
+        state.userByValidationCode(validationCode, Instant.now()) match {
+          case None          =>
+            replyTo ! None
+            Behaviors.same
+          case Some(account) =>
+            // a new code on each attempt, only the one actually sent to the approver matters
+            val approvalCode = ApiTokens.generate()
+            val prepared     = account.copy(approvalCodeHash = Some(ApiTokens.hash(approvalCode)))
+            val newState     = state.userUpdated(prepared)
+            replyTo ! Some(UserApprovalRequest(prepared.user, approvalCode))
+            guardianRunningBehavior(newState)
+        }
+      // ---------------------------------------------------------------------
       case GuardianUserEmailValidateCommand(validationCode, replyTo)        =>
-        val codeHash = ApiTokens.hash(validationCode)
-        val now      = Instant.now()
-        state.users.values.find(account => account.validationCodeHash.contains(codeHash) && account.validationExpiresOn.exists(_.isAfter(now))) match {
+        state.userByValidationCode(validationCode, Instant.now()) match {
           case None          =>
             replyTo ! None
             Behaviors.same
           case Some(account) =>
             val validated = account.copy(user = account.user.copy(emailValidated = true), validationCodeHash = None, validationExpiresOn = None)
-            storage.userSave(validated)
+            val newState  = state.userUpdated(validated)
             replyTo ! Some(validated.user)
-            guardianRunningBehavior(state.copy(users = state.users + (validated.user.id -> validated)))
+            guardianRunningBehavior(newState)
+        }
+      // ---------------------------------------------------------------------
+      case GuardianUserApprovalGetCommand(approvalCode, replyTo)            =>
+        replyTo ! state.userByApprovalCode(approvalCode).map(_.user)
+        Behaviors.same
+      // ---------------------------------------------------------------------
+      case GuardianUserApproveCommand(approvalCode, replyTo)                =>
+        state.userByApprovalCode(approvalCode) match {
+          case None          =>
+            replyTo ! None
+            Behaviors.same
+          case Some(account) =>
+            val approved = account.copy(user = account.user.copy(approved = true), approvalCodeHash = None)
+            val newState = state.userUpdated(approved)
+            replyTo ! Some(approved.user)
+            guardianRunningBehavior(newState)
+        }
+      // ---------------------------------------------------------------------
+      case GuardianUserRejectCommand(approvalCode, replyTo)                 =>
+        state.userByApprovalCode(approvalCode) match {
+          case None          =>
+            replyTo ! None
+            Behaviors.same
+          case Some(account) =>
+            logger.info(s"Dropping user ${account.user.id} registration, rejected by the approver")
+            val newState = userDrop(context, state, account)
+            replyTo ! Some(account.user)
+            guardianRunningBehavior(newState)
         }
       // ---------------------------------------------------------------------
       case GuardianUserAuthenticateCommand(token, replyTo)                  =>
@@ -833,8 +902,24 @@ class StandardCountersEngine(config: ServiceConfig, storage: CountersStorage) ex
     countersSystem.ask(GuardianUserRegisterCommand(inputs, _))
   }
 
+  override def userEmailValidationPrepare(validationCode: String): Future[Option[UserApprovalRequest]] = {
+    countersSystem.ask(GuardianUserEmailValidationPrepareCommand(validationCode, _))
+  }
+
   override def userEmailValidate(validationCode: String): Future[Option[User]] = {
     countersSystem.ask(GuardianUserEmailValidateCommand(validationCode, _))
+  }
+
+  override def userApprovalGet(approvalCode: String): Future[Option[User]] = {
+    countersSystem.ask(GuardianUserApprovalGetCommand(approvalCode, _))
+  }
+
+  override def userApprove(approvalCode: String): Future[Option[User]] = {
+    countersSystem.ask(GuardianUserApproveCommand(approvalCode, _))
+  }
+
+  override def userReject(approvalCode: String): Future[Option[User]] = {
+    countersSystem.ask(GuardianUserRejectCommand(approvalCode, _))
   }
 
   override def userAuthenticate(token: String): Future[Option[User]] = {

@@ -42,12 +42,14 @@ class StandardCountersEngineTest extends AsyncWordSpec with should.Matchers {
 
   def uniqueEmail(name: String) = s"$name-${UUID.randomUUID()}@example.com"
 
-  /** Registers a user and validates its email */
+  /** Registers a user, validates its email and approves it */
   def register(engine: StandardCountersEngine, name: String): Future[UserRegistration] =
     for {
       registered <- engine.userRegister(UserCreateInputs(name, uniqueEmail(name), None)).map(_.value)
-      validated  <- engine.userEmailValidate(registered.validationCode).map(_.value)
-    } yield registered.registration.copy(user = validated)
+      request    <- engine.userEmailValidationPrepare(registered.validationCode).map(_.value)
+      _          <- engine.userEmailValidate(registered.validationCode)
+      approved   <- engine.userApprove(request.approvalCode).map(_.value)
+    } yield registered.registration.copy(user = approved)
 
   def withFileSystemStorage[T](test: (() => StandardCountersEngine, File) => Future[Assertion]): Future[Assertion] = {
     val directory = Files.createTempDirectory("counters-engine-test").toFile
@@ -79,6 +81,60 @@ class StandardCountersEngineTest extends AsyncWordSpec with should.Matchers {
           again shouldBe None
           after.value shouldBe validated.value
         }
+      }
+      "wait for the approval once the email validated" in {
+        val engine = new StandardCountersEngine(config, storage)
+        for {
+          registered <- engine.userRegister(UserCreateInputs("john", uniqueEmail("john"), None)).map(_.value)
+          request    <- engine.userEmailValidationPrepare(registered.validationCode).map(_.value)
+          retried    <- engine.userEmailValidationPrepare(registered.validationCode).map(_.value) // the code is not consumed yet
+          firstCode  <- engine.userApprovalGet(request.approvalCode)
+          _          <- engine.userEmailValidate(registered.validationCode)
+          waiting    <- engine.userAuthenticate(registered.registration.token)
+          pending    <- engine.userApprovalGet(retried.approvalCode)
+          wrongCode  <- engine.userApprove("bad code")
+          approved   <- engine.userApprove(retried.approvalCode)
+          again      <- engine.userApprove(retried.approvalCode)
+          after      <- engine.userAuthenticate(registered.registration.token)
+          _          <- engine.shutdown()
+        } yield {
+          registered.registration.user.approved shouldBe false
+          firstCode shouldBe None // replaced by the retried one
+          waiting.value.emailValidated shouldBe true
+          waiting.value.approved shouldBe false
+          pending.value.id shouldBe registered.registration.user.id
+          wrongCode shouldBe None
+          approved.value.approved shouldBe true
+          again shouldBe None
+          after.value shouldBe approved.value
+        }
+      }
+      "be dropped with their groups when rejected" in {
+        val engine = new StandardCountersEngine(config, storage)
+        for {
+          registered <- engine.userRegister(UserCreateInputs("john", "rejected@example.com", None)).map(_.value)
+          request    <- engine.userEmailValidationPrepare(registered.validationCode).map(_.value)
+          _          <- engine.userEmailValidate(registered.validationCode)
+          rejected   <- engine.userReject(request.approvalCode)
+          again      <- engine.userReject(request.approvalCode)
+          token      <- engine.userAuthenticate(registered.registration.token)
+          reused     <- engine.userRegister(UserCreateInputs("john", "rejected@example.com", None)) // the email address has been released
+          stats      <- engine.serviceStatsGet()
+          _          <- engine.shutdown()
+        } yield {
+          rejected.value.id shouldBe registered.registration.user.id
+          again shouldBe None
+          token shouldBe None
+          reused shouldBe defined
+          stats shouldBe ServiceStats(usersCount = 1, groupCount = 1, countersCount = 0)
+        }
+      }
+      "consider users registered before approvals existed as approved" in {
+        import com.github.plokhotnyuk.jsoniter_scala.core.readFromString
+        val stored = """{"user":{"id":"9b7a4e7e-1f36-4a5c-9f5e-3f4c2b8a1d10","name":"old","email":"old@example.com","emailValidated":true,"defaultGroupId":"5c0e6a3e-6a8f-4f0e-b0a3-1c2d3e4f5a6b"},"tokenHash":"x"}"""
+        val account = readFromString[UserAccount](stored)
+        account.user.approved shouldBe true
+        account.approvalCodeHash shouldBe None
       }
       "be dropped when the email has not been validated in time" in {
         val expiringConfig = config.copy(counters = config.counters.copy(behavior = config.counters.behavior.copy(emailValidationDelay = 0.seconds)))

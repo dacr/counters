@@ -67,6 +67,7 @@ case class SmtpConfig(
 
 case class MailConfig(
   from: String,
+  approver: String,
   replyTo: Option[String],
   smtp: SmtpConfig
 ) derives ConfigReader

@@ -18,11 +18,20 @@
           @validation.title
         </h1>
         <p class="lead">@validation.message</p>
-        @for(code <- validation.confirmCode) {
-          <form method="post" action="@validation.context.base/user/validate?code=@code">
-            <button type="submit" class="btn btn-primary btn-lg">Confirm my email address</button>
-          </form>
+        @if(validation.details.nonEmpty) {
+          <table class="table table-sm">
+            @for((name, value) <- validation.details) {
+              <tr><th>@name</th><td>@value</td></tr>
+            }
+          </table>
         }
+        <div class="d-flex gap-2">
+          @for(action <- validation.actions) {
+            <form method="post" action="@validation.context.base@action.path">
+              <button type="submit" class="btn btn-@action.style btn-lg">@action.label</button>
+            </form>
+          }
+        </div>
         <hr class="my-4"/>
         <p class="text-right"><small>
           <i><a href="@validation.context.projectURL">@validation.context.appcode</a> @validation.context.buildVersion</i>
