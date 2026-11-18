@@ -10,23 +10,29 @@
   utils.lib.eachDefaultSystem (system:
   let
     pkgs = import nixpkgs { inherit system; };
+    # nixpkgs sbt and metals are pinned to the default JDK, force them on java 25
+    jdk = pkgs.jdk25;
+    jdkHeadless = pkgs.jdk25_headless;
+    sbtWithJdk = pkgs.sbt.override { jre = jdk; };
+    sbtWithJdkHeadless = pkgs.sbt.override { jre = jdkHeadless; };
+    metalsWithJdk = pkgs.metals.override { jre = jdk; };
   in {
     # ---------------------------------------------------------------------------
     # nix develop
     devShells.default = pkgs.mkShell {
-      buildInputs = [pkgs.sbt pkgs.metals pkgs.jdk21 pkgs.hello];
+      buildInputs = [sbtWithJdk metalsWithJdk jdk pkgs.hello];
     };
 
     # ---------------------------------------------------------------------------
     # nix build
-    packages.default = sbt.mkSbtDerivation.${system} {
+    packages.default = (sbt.mkSbtDerivation.${system}.withOverrides { sbt = sbtWithJdkHeadless; }) {
       pname = "nix-counters";
       version = builtins.elemAt (builtins.match ''[^"]+"(.*)".*'' (builtins.readFile ./version.sbt)) 0;
       depsSha256 = "sha256-NUpHtfX8RH1Rc3JiS20JPMDGYTCCSvVBNrKv2LcX1lQ=";
 
       src = ./.;
 
-      buildInputs = [pkgs.sbt pkgs.jdk21_headless pkgs.makeWrapper];
+      buildInputs = [sbtWithJdkHeadless jdkHeadless pkgs.makeWrapper];
 
       buildPhase = "sbt Universal/packageZipTarball";
 
@@ -39,7 +45,7 @@
               pkgs.gawk
               pkgs.coreutils
               pkgs.bash
-              pkgs.jdk21_headless
+              jdkHeadless
             ]}
       '';
     };
