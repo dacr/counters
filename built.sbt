@@ -88,3 +88,7 @@ developers := List(
 
 Universal / topLevelDirectory := None
 Universal / packageName       := s"${name.value}"
+
+// Java4Shell (CVE-2026-114938) mitigation: disable the vulnerable AVX-512 Base64 decoder intrinsic.
+// Remove once running on a patched JDK.
+bashScriptExtraDefines += """addJava "-XX:-UseBASE64Intrinsics""""
