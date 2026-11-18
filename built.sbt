@@ -11,16 +11,16 @@ scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8", "-featur
 lazy val versions = new {
   // client side dependencies
   val bootstrap = "5.3.8"
-  val jquery    = "3.7.1"
+  val jquery    = "3.8.0"
   val awesome   = "6.7.2"
 
   // server side dependencies
-  val pureConfig      = "0.17.10"
-  val pekko           = "1.7.0"
-  val pekkoHttp       = "1.4.0"
-  val tapir           = "1.13.32"
-  val jsoniter        = "2.41.2"
-  val logback         = "1.6.5"
+  val pureConfig      = "0.17.11"
+  val pekko           = "1.7.1"
+  val pekkoHttp       = "1.4.2"
+  val tapir           = "1.14.1"
+  val jsoniter        = "2.43.0"
+  val logback         = "1.6.7"
   val slf4j           = "2.0.20"
   val scalatest       = "3.2.20"
   val commonsio       = "2.22.0"
