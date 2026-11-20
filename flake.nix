@@ -28,7 +28,7 @@
     packages.default = (sbt.mkSbtDerivation.${system}.withOverrides { sbt = sbtWithJdkHeadless; }) {
       pname = "nix-counters";
       version = builtins.elemAt (builtins.match ''[^"]+"(.*)".*'' (builtins.readFile ./version.sbt)) 0;
-      depsSha256 = "sha256-NUpHtfX8RH1Rc3JiS20JPMDGYTCCSvVBNrKv2LcX1lQ=";
+      depsSha256 = "sha256-y3m0mUULL37Pg+ypumO1wVbVuDkla/7nuxvVUtXkgS8=";
 
       src = ./.;
 
